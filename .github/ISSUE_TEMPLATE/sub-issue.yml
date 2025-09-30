@@ -1,0 +1,71 @@
+name: Sub-Issue
+description: Create a sub-issue to track specific work items related to a parent issue
+title: "[Sub-Issue]: "
+labels: ["sub-issue"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for creating a sub-issue! This template helps track specific work items related to a parent issue.
+  
+  - type: input
+    id: parent-issue
+    attributes:
+      label: Parent Issue
+      description: Reference to the parent issue (e.g., elastic/infosec#22970)
+      placeholder: "elastic/infosec#22970"
+    validations:
+      required: true
+  
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: Describe the specific work to be done in this sub-issue
+      placeholder: "Provide a clear description of what needs to be accomplished..."
+    validations:
+      required: true
+  
+  - type: textarea
+    id: acceptance-criteria
+    attributes:
+      label: Acceptance Criteria
+      description: Define what needs to be completed for this sub-issue to be closed
+      placeholder: |
+        - [ ] Criterion 1
+        - [ ] Criterion 2
+        - [ ] Criterion 3
+    validations:
+      required: false
+  
+  - type: textarea
+    id: technical-details
+    attributes:
+      label: Technical Details
+      description: Any technical implementation details or considerations
+      placeholder: "Add relevant technical information, architecture decisions, etc..."
+    validations:
+      required: false
+  
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority
+      description: What is the priority of this sub-issue?
+      options:
+        - Low
+        - Medium
+        - High
+        - Critical
+      default: 1
+    validations:
+      required: false
+  
+  - type: textarea
+    id: notes
+    attributes:
+      label: Additional Notes
+      description: Any additional context or notes
+      placeholder: "Add any other relevant information..."
+    validations:
+      required: false
