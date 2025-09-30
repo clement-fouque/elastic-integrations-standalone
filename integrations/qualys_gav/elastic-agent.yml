@@ -37,7 +37,7 @@ providers:
 inputs:
   - id: cel-qualys_gav-066eee3b-3015-4ffd-acc4-715ffa63b1d9
     name: qualys_gav-1
-    revision: 1
+    revision: 2
     type: cel
     use_output: default
     meta:
@@ -52,7 +52,7 @@ inputs:
         data_stream:
           dataset: qualys_gav.asset
           type: logs
-        config_version: 2
+        config_version: 3
         interval: 24h
         resource.tracer:
           enabled: false
