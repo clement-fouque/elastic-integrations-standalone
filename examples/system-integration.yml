@@ -1,0 +1,71 @@
+# System Integration Configuration Example
+#
+# This configuration collects system metrics and logs from the host system.
+# To use this in Fleet:
+#   1. Go to Kibana → Fleet → Integrations
+#   2. Search for "System"
+#   3. Click "Add System"
+#   4. Use the settings below as reference
+
+# System Metrics Configuration
+system_metrics:
+  enabled: true
+  period: 10s
+  
+  # CPU metrics
+  cpu:
+    enabled: true
+    
+  # Memory metrics  
+  memory:
+    enabled: true
+    
+  # Network metrics
+  network:
+    enabled: true
+    
+  # Filesystem metrics
+  filesystem:
+    enabled: true
+    
+  # Process metrics
+  process:
+    enabled: true
+    processes: ['.*']
+    
+  # Disk I/O metrics
+  diskio:
+    enabled: true
+
+# System Logs Configuration
+system_logs:
+  enabled: true
+  
+  # Syslog
+  syslog:
+    enabled: true
+    paths:
+      - /var/log/syslog
+      - /var/log/messages
+      
+  # Auth logs
+  auth:
+    enabled: true
+    paths:
+      - /var/log/auth.log
+      - /var/log/secure
+
+# Data Stream Configuration
+data_streams:
+  - type: metrics
+    dataset: system.cpu
+  - type: metrics
+    dataset: system.memory
+  - type: metrics
+    dataset: system.network
+  - type: metrics
+    dataset: system.filesystem
+  - type: logs
+    dataset: system.syslog
+  - type: logs
+    dataset: system.auth
