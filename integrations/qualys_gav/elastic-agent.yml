@@ -1,0 +1,166 @@
+# https://www.elastic.co/docs/reference/fleet/elastic-agent-reference-yaml
+
+outputs:
+  default:
+    type: elasticsearch
+    hosts:
+      - ${ELASTIC_HOST}
+    # api_key: "example-key"
+    username: ${ELASTIC_USERNAME}
+    password: ${ELASTIC_PASSWORD}
+    ssl.verification_mode: none
+
+    # Performance preset for elasticsearch outputs. One of "balanced", "throughput",
+    # "scale", "latency" and "custom".
+    # The default if unspecified is "custom".
+    preset: balanced
+
+agent:
+  download:
+    sourceURI: 'https://artifacts.elastic.co/downloads/'
+  monitoring:
+    enabled: false
+    use_output: default
+    namespace: default
+    logs: false
+    metrics: false
+  features: {}
+
+providers:
+  local:
+    vars:
+      qualys_api: "${QUALYS_API}"
+      qualys_username: "${QUALYS_USERNAME}"
+      qualys_password: "${QUALYS_PASSWORD}"
+      elastic_integration_qualys_gav_version: "${ELASTIC_INTEGRATION_QUALYS_GAV_VERSION}"
+
+inputs:
+  - id: cel-qualys_gav-066eee3b-3015-4ffd-acc4-715ffa63b1d9
+    name: qualys_gav-1
+    revision: 1
+    type: cel
+    use_output: default
+    meta:
+      package:
+        name: qualys_gav
+        version: ${local.elastic_integration_qualys_gav_version}
+    data_stream:
+      namespace: default
+    package_policy_id: 066eee3b-3015-4ffd-acc4-715ffa63b1d9
+    streams:
+      - id: cel-qualys_gav.asset-066eee3b-3015-4ffd-acc4-715ffa63b1d9
+        data_stream:
+          dataset: qualys_gav.asset
+          type: logs
+        config_version: 2
+        interval: 24h
+        resource.tracer:
+          enabled: false
+          filename: ../../logs/cel/http-request-trace-*.ndjson
+          maxbackups: 5
+        resource.ssl: null
+        resource.timeout: 10m
+        resource.url: ${local.qualys_api}
+        state:
+          batch_size: 100
+          username: ${local.qualys_username}
+          password: ${local.qualys_password}
+          asset_id: 0
+        redact:
+          fields:
+            - password
+        program: |
+          state.url.trim_right("/").as(base_url, state.with(
+            (has(state.expiry) && timestamp(state.expiry) > now ?
+              {
+                "access_token": state.access_token,
+                "expiry": state.expiry
+              }
+            :
+              post_request(
+                base_url + "/auth",
+                "application/x-www-form-urlencoded",
+                {"username":[state.username],"password":[state.password]}.format_query()
+              ).do_request().as(resp, resp.StatusCode == 201 ?
+                {
+                  "access_token": string(resp.Body),
+                  // Include 30s grace period to manage session expiry.
+                  "expiry": (now() + duration("4h") - duration("30s")).format(time_layout.RFC3339),
+                }
+              :
+                {
+                  "events": {
+                    "error": {
+                      "code": string(resp.StatusCode),
+                      "id": string(resp.Status),
+                      "message": "POST: "+ base_url + "/auth" + (
+                        size(resp.Body) != 0 ?
+                          string(resp.Body)
+                        :
+                          string(resp.Status) + ' (' + string(resp.StatusCode) + ')'
+                      ),
+                    },
+                  },
+                  "want_more": false,
+                }
+              )
+            ).as(token,
+              has(token.events) ? token : // Exit early due to failure.
+                request(
+                  "POST",
+                  base_url + "/rest/2.0/search/am/asset?" + {
+                    "excludeFields": ["hardware,openPort,service,software,volume"],
+                    "pageSize": [string(state.batch_size)],
+                    "lastSeenAssetId": [string(int(state.asset_id))]
+                  }.format_query()
+                ).with({
+                  "Header":{
+                    "Authorization": ["Bearer " + token.access_token],
+                  }
+                }).do_request().as(resp, resp.StatusCode == 200 ?
+                  resp.Body.decode_json().as(body, {
+                    "events": body.assetListData.asset.map(e,{
+                      "message": e.encode_json(),
+                    }),
+                    "want_more": body.hasMore != 0,
+                    "access_token": token.access_token,
+                    "expiry": token.expiry,
+                    "asset_id": body.hasMore != 0 ? body.assetListData.asset.map(e, e.assetId).max() : 0,
+                  })
+                :
+                  (resp.StatusCode == 204) ?
+                    // 204 No Content - Terminate Pagination and Publish Empty Event.
+                    {
+                      "events": [],
+                      "want_more": false,
+                      "access_token": token.access_token,
+                      "expiry": token.expiry,
+                      "asset_id": 0,
+                    }
+                  :
+                    {
+                      "events": {
+                        "error": {
+                          "code": string(resp.StatusCode),
+                          "id": string(resp.Status),
+                          "message": "POST: "+ base_url + "/rest/2.0/search/am/asset" + (
+                            size(resp.Body) != 0 ?
+                              string(resp.Body)
+                            :
+                              string(resp.Status) + ' (' + string(resp.StatusCode) + ')'
+                          ),
+                        },
+                      },
+                      "want_more": false,
+                    }
+                )
+            )
+          ))
+        tags:
+          - preserve_duplicate_custom_fields
+          - forwarded
+          - qualys_gav-asset
+        publisher_pipeline.disable_host: true
+
+# Send all logging output to stderr. The default is false.
+agent.logging.to_stderr: true
