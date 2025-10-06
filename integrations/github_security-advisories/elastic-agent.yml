@@ -1,0 +1,219 @@
+# https://www.elastic.co/docs/reference/fleet/elastic-agent-reference-yaml
+
+outputs:
+  default:
+    type: elasticsearch
+    hosts:
+      - ${ELASTIC_HOST}
+    # api_key: "example-key"
+    username: ${ELASTIC_USERNAME}
+    password: ${ELASTIC_PASSWORD}
+    ssl.verification_mode: none
+
+    # Performance preset for elasticsearch outputs. One of "balanced", "throughput",
+    # "scale", "latency" and "custom".
+    # The default if unspecified is "custom".
+    preset: balanced
+
+agent:
+  download:
+    sourceURI: 'https://artifacts.elastic.co/downloads/'
+  monitoring:
+    enabled: false
+    use_output: default
+    namespace: default
+    logs: false
+    metrics: false
+  features: {}
+
+providers:
+  local:
+    vars:
+      elastic_integration_github_version: "${ELASTIC_INTEGRATION_GITHUB_VERSION}"
+      github_token: "${GITHUB_TOKEN}"
+
+inputs:
+  - id: cel-github-f633317e-e7dc-4e1d-a0e2-033d16280f8a
+    name: github-security-advisories
+    revision: 1
+    type: cel
+    use_output: default
+    meta:
+      package:
+        name: github
+        version: ${local.elastic_integration_github_version}
+    data_stream:
+      namespace: default
+    package_policy_id: 066eee3b-3015-4ffd-acc4-715ffa63b1d9
+    streams:
+      - id: cel-github.security_advisories-reviewed-f633317e-e7dc-4e1d-a0e2-033d16280f8a
+        data_stream:
+          dataset: github.security_advisories
+          type: logs
+        config_version: 1
+        interval: 6h
+        resource.tracer:
+          enabled: false
+          filename: ../../logs/cel/http-request-trace-*.ndjson
+          maxbackups: 5
+        resource.ssl: null
+        resource.timeout: 10m
+        resource.url: https://api.github.com/advisories
+        state:
+          api_key: ${local.github_token}
+          advisory_type: reviewed
+          batch_size: 100
+        redact:
+          fields:
+            - api_key
+        regexp:
+          github_link_next: <([^>]+)>; rel="next"
+        max_executions: 5000
+        program: |-
+          request(
+            "GET",
+            state.?cursor.next_url.orValue(state.url.trim_right("/") + "?" + {
+                "per_page": [string(state.batch_size)],
+                "type": [state.advisory_type],
+                "sort": ["published"],
+                "order": ["desc"]
+              }.format_query()
+            )
+          ).with({
+            "Header": {
+                "Accept": ["application/vnd.github+json"],
+                "X-GitHub-Api-Version": ["2022-11-28"],
+                "Authorization": ["Bearer " + state.api_key],
+            },
+          }).do_request().as(resp, (resp.StatusCode != 200) ?
+            {
+              "events": {
+                "error": {
+                  "code": string(resp.StatusCode),
+                  "id": string(resp.Status),
+                  "message": "GET " + state.url.trim_right("/") + ": " + (
+                    (size(resp.Body) != 0) ?
+                      string(resp.Body)
+                    :
+                      string(resp.Status) + " (" + string(resp.StatusCode) + ")"
+                  ),
+                },
+              },
+              "want_more": false,
+            }
+          :
+            bytes(resp.Body).decode_json().as(body,
+              {
+                "api_key": state.api_key,
+                "advisory_type": state.advisory_type,
+                "batch_size": state.batch_size,
+                "cursor": {
+                   ?"next_url": (
+                    (has(resp.?Header.Link) && size(resp.Header.Link) != 0 && resp.Header.Link[0].re_match("github_link_next")) ?
+                      resp.Header.Link[0].re_find_submatch("github_link_next")[?1]
+                    :
+                      optional.none()
+                  ),
+                },
+                "events": body.map(
+                  e,
+                  {
+                    "message": e.encode_json(),
+                  }
+                ),
+                "url": state.url,
+                "want_more": has(resp.?Header.Link) && size(resp.Header.Link) != 0 && resp.Header.Link[0].re_match("github_link_next"),
+              }
+            )
+          )
+        tags:
+          - forwarded
+          - github-security-advisories
+        publisher_pipeline.disable_host: true
+      - id: cel-github.security_advisories-unreviewed-f633317e-e7dc-4e1d-a0e2-033d16280f8a
+        data_stream:
+          dataset: github.security_advisories
+          type: logs
+        config_version: 1
+        interval: 6h
+        resource.tracer:
+          enabled: false
+          filename: ../../logs/cel/http-request-trace-*.ndjson
+          maxbackups: 5
+        resource.ssl: null
+        resource.timeout: 10m
+        resource.url: https://api.github.com/advisories
+        state:
+          api_key: ${local.github_token}
+          advisory_type: unreviewed
+          batch_size: 100
+        redact:
+          fields:
+            - api_key
+        regexp:
+          github_link_next: <([^>]+)>; rel="next"
+        max_executions: 5000
+        program: |-
+          request(
+            "GET",
+            state.?cursor.next_url.orValue(state.url.trim_right("/") + "?" + {
+                "per_page": [string(state.batch_size)],
+                "type": [state.advisory_type],
+                "sort": ["published"],
+                "order": ["desc"]
+              }.format_query()
+            )
+          ).with({
+            "Header": {
+                "Accept": ["application/vnd.github+json"],
+                "X-GitHub-Api-Version": ["2022-11-28"],
+                "Authorization": ["Bearer " + state.api_key],
+            },
+          }).do_request().as(resp, (resp.StatusCode != 200) ?
+            {
+              "events": {
+                "error": {
+                  "code": string(resp.StatusCode),
+                  "id": string(resp.Status),
+                  "message": "GET " + state.url.trim_right("/") + ": " + (
+                    (size(resp.Body) != 0) ?
+                      string(resp.Body)
+                    :
+                      string(resp.Status) + " (" + string(resp.StatusCode) + ")"
+                  ),
+                },
+              },
+              "want_more": false,
+            }
+          :
+            bytes(resp.Body).decode_json().as(body,
+              {
+                "api_key": state.api_key,
+                "advisory_type": state.advisory_type,
+                "batch_size": state.batch_size,
+                "cursor": {
+                   ?"next_url": (
+                    (has(resp.?Header.Link) && size(resp.Header.Link) != 0 && resp.Header.Link[0].re_match("github_link_next")) ?
+                      resp.Header.Link[0].re_find_submatch("github_link_next")[?1]
+                    :
+                      optional.none()
+                  ),
+                },
+                "events": body.map(
+                  e,
+                  {
+                    "message": e.encode_json(),
+                  }
+                ),
+                "url": state.url,
+                "want_more": has(resp.?Header.Link) && size(resp.Header.Link) != 0 && resp.Header.Link[0].re_match("github_link_next"),
+              }
+            )
+          )
+        tags:
+          - forwarded
+          - github-security-advisories
+        publisher_pipeline.disable_host: true
+
+# Send all logging output to stderr. The default is false.
+agent.logging.to_stderr: true
