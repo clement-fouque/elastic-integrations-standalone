@@ -1,0 +1,95 @@
+# https://www.elastic.co/docs/reference/fleet/elastic-agent-reference-yaml
+
+outputs:
+  default:
+    type: elasticsearch
+    hosts:
+      - ${ELASTIC_HOST}
+    # api_key: "example-key"
+    username: ${ELASTIC_USERNAME}
+    password: ${ELASTIC_PASSWORD}
+    ssl.verification_mode: none
+
+    # Performance preset for elasticsearch outputs. One of "balanced", "throughput",
+    # "scale", "latency" and "custom".
+    # The default if unspecified is "custom".
+    preset: balanced
+
+agent:
+  download:
+    sourceURI: 'https://artifacts.elastic.co/downloads/'
+  monitoring:
+    enabled: false
+    use_output: default
+    namespace: default
+    logs: false
+    metrics: false
+  features: {}
+
+providers:
+  local:
+    vars:
+      elastic_integration_github_version: "${ELASTIC_INTEGRATION_GITHUB_VERSION}"
+      github_token: "${GITHUB_TOKEN}"
+
+inputs:
+  - id: httpjson-github-f15434d9-6fa3-4524-ac6f-20f7605cd2fd
+    name: github-issues
+    revision: 2
+    type: httpjson
+    use_output: default
+    meta:
+      package:
+        name: github
+        version: ${local.elastic_integration_github_version}
+    data_stream:
+      namespace: default
+    package_policy_id: f15434d9-6fa3-4524-ac6f-20f7605cd2fd
+    streams:
+      - id: httpjson-github.issues-f15434d9-6fa3-4524-ac6f-20f7605cd2fd
+        data_stream:
+          dataset: github.issues
+          type: logs
+        config_version: '2'
+        interval: 10m
+        request.method: GET
+        request.url: >-
+          https://api.github.com/repos/clement-fouque/elastic-integrations-standalone/issues
+        request.timeout: 60s
+        request.transforms:
+          - set:
+              target: header.Authorization
+              value: Bearer ${local.github_token}
+          - set:
+              target: url.params.state
+              value: all
+          - set:
+              target: url.params.filter
+              value: all
+          - set:
+              target: url.params.labels
+              value: null
+              default: null
+          - set:
+              target: url.params.since
+              value: null
+              default: null
+          - set:
+              target: url.params.per_page
+              value: 100
+        request.rate_limit.limit: '[[ .last_response.header.Get "X-RateLimit-Limit" ]]'
+        request.rate_limit.reset: '[[ .last_response.header.Get "X-RateLimit-Reset" ]]'
+        request.rate_limit.remaining: '[[ .last_response.header.Get "X-RateLimit-Remaining" ]]'
+        response.pagination:
+          - set:
+              target: url.value
+              value: '[[ getRFC5988Link "next" .last_response.header.Link ]]'
+              fail_on_template_error: true
+              do_not_log_failure: true
+        tags:
+          - forwarded
+          - github-issues
+        publisher_pipeline.disable_host: true
+
+# Send all logging output to stderr. The default is false.
+agent.logging.to_stderr: true

@@ -1,5 +1,16 @@
 name: elastic-integrations-standalone
 services:
+  github_issues:
+    image: docker.elastic.co/elastic-agent/elastic-agent-wolfi:${ELASTIC_VERSION}
+    container_name: elastic-standalone-github_issues
+    volumes:
+      - ./integrations/github_issues/elastic-agent.yml:/usr/share/elastic-agent/elastic-agent.yml
+    env_file:
+      - .env
+      - ./integrations/github_issues/.env
+    restart: unless-stopped
+    network_mode: "host"
+  
   github_security-advisories:
     image: docker.elastic.co/elastic-agent/elastic-agent-wolfi:${ELASTIC_VERSION}
     container_name: elastic-standalone-github_security_advisories
