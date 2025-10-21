@@ -32,3 +32,14 @@ services:
       - ./integrations/qualys_gav/.env
     restart: unless-stopped
     network_mode: "host"
+  
+  qualys_vmdr-knowledge_base:
+    image: docker.elastic.co/elastic-agent/elastic-agent-wolfi:${ELASTIC_VERSION}
+    container_name: elastic-standalone-qualys_vmdr-knowledge_base
+    volumes:
+      - ./integrations/qualys_vmdr/knowledge_base/elastic-agent.yml:/usr/share/elastic-agent/elastic-agent.yml
+    env_file:
+      - .env
+      - ./integrations/qualys_vmdr/knowledge_base/.env
+    restart: unless-stopped
+    network_mode: "host"
