@@ -68,12 +68,10 @@ inputs:
               value: all
           - set:
               target: url.params.labels
-              value: null
-              default: null
+              value: ''
           - set:
               target: url.params.since
-              value: null
-              default: null
+              value: ''
           - set:
               target: url.params.per_page
               value: 100
