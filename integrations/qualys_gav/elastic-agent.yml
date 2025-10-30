@@ -109,6 +109,7 @@ inputs:
                 request(
                   "POST",
                   base_url + "/rest/2.0/search/am/asset?" + {
+                    //"assetLastUpdated": ["2025-10-01T11:30Z"],
                     "excludeFields": ["hardware,openPort,service,software,volume"],
                     "pageSize": [string(state.batch_size)],
                     "lastSeenAssetId": [string(int(state.asset_id))]
@@ -160,6 +161,7 @@ inputs:
           - preserve_duplicate_custom_fields
           - forwarded
           - qualys_gav-asset
+          - provider_cloud_data
         publisher_pipeline.disable_host: true
 
 # Send all logging output to stderr. The default is false.
