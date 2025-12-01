@@ -33,6 +33,17 @@ services:
     restart: unless-stopped
     network_mode: "host"
   
+  qualys_vmdr-asset_host_detection:
+    image: docker.elastic.co/elastic-agent/elastic-agent-wolfi:${ELASTIC_VERSION}
+    container_name: elastic-standalone-qualys_vmdr-asset_host_detection
+    volumes:
+      - ./integrations/qualys_vmdr/asset_host_detection/elastic-agent.yml:/usr/share/elastic-agent/elastic-agent.yml
+    env_file:
+      - .env
+      - ./integrations/qualys_vmdr/asset_host_detection/.env
+    restart: unless-stopped
+    network_mode: "host"
+
   qualys_vmdr-knowledge_base:
     image: docker.elastic.co/elastic-agent/elastic-agent-wolfi:${ELASTIC_VERSION}
     container_name: elastic-standalone-qualys_vmdr-knowledge_base
