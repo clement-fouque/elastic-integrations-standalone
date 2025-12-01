@@ -65,7 +65,7 @@ inputs:
         state:
           user: ${local.qualys_username}
           password: ${local.qualys_password}
-          batch_size: 500
+          batch_size: 1000
           params: >-
             show_asset_id=1
             &include_vuln_type=confirmed
