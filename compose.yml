@@ -54,3 +54,14 @@ services:
       - ./integrations/qualys_vmdr/knowledge_base/.env
     restart: unless-stopped
     network_mode: "host"
+  
+  snyk:
+    image: docker.elastic.co/elastic-agent/elastic-agent-wolfi:${ELASTIC_VERSION}
+    container_name: elastic-standalone-snyk
+    volumes:
+      - ./integrations/snyk/elastic-agent.yml:/usr/share/elastic-agent/elastic-agent.yml
+    env_file:
+      - .env
+      - ./integrations/snyk/.env
+    restart: unless-stopped
+    network_mode: "host"
