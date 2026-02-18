@@ -66,7 +66,7 @@ inputs:
           user: ${local.qualys_username}
           password: ${local.qualys_password}
           params: details=All
-          initial_interval: 400000h
+          initial_interval: 120h
           keep_xml: false
         redact:
           fields:
