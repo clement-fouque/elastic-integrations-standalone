@@ -52,7 +52,7 @@ inputs:
           dataset: snyk.issues
           type: logs
         config_version: 1
-        interval: 24h
+        interval: 10m
         resource.tracer:
           enabled: null
           filename: ../../logs/cel/http-request-trace-*.ndjson
