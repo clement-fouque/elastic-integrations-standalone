@@ -12,8 +12,8 @@ outputs:
 
     # Performance preset for elasticsearch outputs. One of "balanced", "throughput",
     # "scale", "latency" and "custom".
-    # The default if unspecified is "custom".
-    preset: balanced
+    # Since the container is dedicated solely to running the agent, we don't need to reserve resources for other applications.
+    preset: throughput
 
 agent:
   download:

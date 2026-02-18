@@ -12,12 +12,12 @@ outputs:
 
     # Performance preset for elasticsearch outputs. One of "balanced", "throughput",
     # "scale", "latency" and "custom".
-    # The default if unspecified is "custom".
-    preset: balanced
+    # Since the container is dedicated solely to running the agent, we don't need to reserve resources for other applications.
+    preset: throughput
 
 agent:
   download:
-    sourceURI: 'https://artifacts.elastic.co/downloads/'
+    sourceURI: "https://artifacts.elastic.co/downloads/"
   monitoring:
     enabled: false
     use_output: default
@@ -60,7 +60,7 @@ inputs:
         resource.url: https://api.snyk.io/
         state:
           end_point_type: /rest/orgs/
-          version: '2024-04-29'
+          version: "2024-04-29"
           issues_id: ${local.snyk_org_id}
           api_token: ${local.snyk_api_token}
           fetch_related_projects: true

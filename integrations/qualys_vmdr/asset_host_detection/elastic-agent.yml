@@ -12,12 +12,12 @@ outputs:
 
     # Performance preset for elasticsearch outputs. One of "balanced", "throughput",
     # "scale", "latency" and "custom".
-    # The default if unspecified is "custom".
-    preset: balanced
+    # Since the container is dedicated solely to running the agent, we don't need to reserve resources for other applications.
+    preset: throughput
 
 agent:
   download:
-    sourceURI: 'https://artifacts.elastic.co/downloads/'
+    sourceURI: "https://artifacts.elastic.co/downloads/"
   monitoring:
     enabled: false
     use_output: default
@@ -60,12 +60,12 @@ inputs:
           maxbackups: 5
           maxsize: 5
         resource.ssl: null
-        resource.timeout: 60m
+        resource.timeout: 30m
         resource.url: https://qualysapi.qg2.apps.qualys.com
         state:
           user: ${local.qualys_username}
           password: ${local.qualys_password}
-          batch_size: 1000
+          batch_size: 100
           params: >-
             show_asset_id=1
             &include_vuln_type=confirmed
@@ -82,12 +82,12 @@ inputs:
             &tag_include_selector=all
             &tag_exclude_selector=any
             &tag_set_include=status:running
-            &tag_set_exclude=status:terminated,status:stopped,status:stale,env:govcloud
+            &tag_set_exclude=status:terminated,status:stopped,status:stale,env:govcloud,owner:team:platform-security
             &show_tags=1
             &show_cloud_tags=1
           show_igs: false
           keep_xml: false
-          query_limit: 250
+          query_limit: 100
         redact:
           fields:
             - password
@@ -107,7 +107,7 @@ inputs:
                   state.?want_more.orValue(false) ?
                     state.next_page.link
                   :
-                    state.url.trim_right("/") + "/api/3.0/fo/asset/host/vm/detection/?" +
+                    state.url.trim_right("/") + "/api/5.0/fo/asset/host/vm/detection/?" +
                     state.?params.orValue("").parse_query().with({
                       "action": ["list"],
                       "show_igs": [state.show_igs? "1" : "0"],
@@ -126,7 +126,7 @@ inputs:
                     (
                       has(resp.Body) && size(resp.Body) != 0
                       ?
-                        (resp.Body.as(xml, try(xml.decode_xml('qualys_api_3_0_ahd'), "decode_xml_error_ahd").as(ahd_body,
+                        (resp.Body.as(xml, try(xml.decode_xml('qualys_api_5_0_ahd'), "decode_xml_error_ahd").as(ahd_body,
                           !has(ahd_body.decode_xml_error_ahd)
                           ?
                             (ahd_body.?doc.HOST_LIST_VM_DETECTION_OUTPUT.RESPONSE.hasValue()
@@ -190,7 +190,7 @@ inputs:
                         "error": {
                           "code": string(resp.StatusCode),
                           "id": string(resp.Status),
-                          "message": "GET "+state.url.trim_right("/") + "/api/3.0/fo/asset/host/vm/detection/: "+(
+                          "message": "GET "+state.url.trim_right("/") + "/api/5.0/fo/asset/host/vm/detection/: "+(
                             size(resp.Body) != 0 ?
                               string(resp.Body)
                             :
@@ -420,7 +420,7 @@ inputs:
                 equals:
                   message: retry
         xsd:
-          qualys_api_3_0_ahd: |
+          qualys_api_5_0_ahd: |
             <xsd:schema xmlns:xsd='http://www.w3.org/2001/XMLSchema'>
               <xsd:element name='HOST_LIST_VM_DETECTION_OUTPUT'>
                 <xsd:complexType>
@@ -604,6 +604,7 @@ inputs:
                   <xsd:element ref='EC2'/>
                   <xsd:element ref='GOOGLE'/>
                   <xsd:element ref='AZURE'/>
+                  <xsd:element ref='ALICLOUD'/>
                 </xsd:choice>
                 </xsd:complexType>
               </xsd:element>
@@ -622,6 +623,13 @@ inputs:
                 </xsd:complexType>
               </xsd:element>
               <xsd:element name='AZURE'>
+                <xsd:complexType>
+                <xsd:sequence>
+                  <xsd:element ref='ATTRIBUTE' minOccurs='0' maxOccurs='unbounded'/>
+                </xsd:sequence>
+                </xsd:complexType>
+              </xsd:element>
+              <xsd:element name='ALICLOUD'>
                 <xsd:complexType>
                 <xsd:sequence>
                   <xsd:element ref='ATTRIBUTE' minOccurs='0' maxOccurs='unbounded'/>
@@ -682,10 +690,18 @@ inputs:
                   <xsd:element ref='FQDN' minOccurs='0' maxOccurs='1'/>
                   <xsd:element ref='SSL' minOccurs='0' maxOccurs='1'/>
                   <xsd:element ref='INSTANCE' minOccurs='0' maxOccurs='1'/>
+                  <xsd:element ref='CVE' minOccurs='0' maxOccurs='1'/>
                   <xsd:element ref='RESULTS' minOccurs='0' maxOccurs='1'/>
                   <xsd:element ref='STATUS' minOccurs='0' maxOccurs='1'/>
                   <xsd:element ref='FIRST_FOUND_DATETIME' minOccurs='0' maxOccurs='1'/>
                   <xsd:element ref='LAST_FOUND_DATETIME' minOccurs='0' maxOccurs='1'/>
+                  <xsd:element ref='VULNERABILITY_DETECTION_SOURCES' minOccurs='0' maxOccurs='1'/>
+                  <xsd:element ref='LATEST_VULNERABILITY_DETECTION_SOURCE' minOccurs='0' maxOccurs='1'/>
+                  <xsd:element ref='MITRE_TACTIC_NAME' minOccurs='0' maxOccurs='1'/>
+                  <xsd:element ref='MITRE_TECHNIQUE_NAME' minOccurs='0' maxOccurs='1'/>
+                  <xsd:element ref='MITRE_TACTIC_ID' minOccurs='0' maxOccurs='1'/>
+                  <xsd:element ref='MITRE_TECHNIQUE_ID' minOccurs='0' maxOccurs='1'/>
+                  <xsd:element ref='TRURISK_ELIMINATION_STATUS' minOccurs='0' maxOccurs='1'/>
                   <xsd:element ref='QDS' minOccurs='0' maxOccurs='1'/>
                   <xsd:element ref='QDS_FACTORS' minOccurs='0' maxOccurs='1'/>
                   <xsd:element ref='TIMES_FOUND' minOccurs='0' maxOccurs='1'/>
@@ -717,6 +733,8 @@ inputs:
               <xsd:element name='SSL' type='xsd:string'>
               </xsd:element>
               <xsd:element name='INSTANCE' type='xsd:string'>
+              </xsd:element>
+              <xsd:element name='CVE' type='xsd:string'>
               </xsd:element>
               <xsd:element name='RESULTS' type='xsd:string'>
               </xsd:element>
@@ -752,6 +770,20 @@ inputs:
               <xsd:element name='FIRST_FOUND_DATETIME' type='xsd:string'>
               </xsd:element>
               <xsd:element name='LAST_FOUND_DATETIME' type='xsd:string'>
+              </xsd:element>
+              <xsd:element name='VULNERABILITY_DETECTION_SOURCES' type='xsd:string'>
+              </xsd:element>
+              <xsd:element name='LATEST_VULNERABILITY_DETECTION_SOURCE' type='xsd:string'>
+              </xsd:element>
+              <xsd:element name='MITRE_TACTIC_NAME' type='xsd:string'>
+              </xsd:element>
+              <xsd:element name='MITRE_TECHNIQUE_NAME' type='xsd:string'>
+              </xsd:element>
+              <xsd:element name='MITRE_TACTIC_ID' type='xsd:string'>
+              </xsd:element>
+              <xsd:element name='MITRE_TECHNIQUE_ID' type='xsd:string'>
+              </xsd:element>
+              <xsd:element name='TRURISK_ELIMINATION_STATUS' type='xsd:string'>
               </xsd:element>
               <xsd:element name='TIMES_FOUND' type='xsd:string'>
               </xsd:element>
