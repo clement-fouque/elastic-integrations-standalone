@@ -22,6 +22,17 @@ services:
     restart: unless-stopped
     network_mode: "host"
   
+  hackerone:
+    image: docker.elastic.co/elastic-agent/elastic-agent-wolfi:${ELASTIC_VERSION}
+    container_name: elastic-standalone-hackerone
+    volumes:
+      - ./integrations/hackerone/elastic-agent.yml:/usr/share/elastic-agent/elastic-agent.yml
+    env_file:
+      - .env
+      - ./integrations/hackerone/.env
+    restart: unless-stopped
+    network_mode: "host"
+  
   qualys_gav:
     image: docker.elastic.co/elastic-agent/elastic-agent-wolfi:${ELASTIC_VERSION}
     container_name: elastic-standalone-qualys_gav
