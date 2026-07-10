@@ -37,7 +37,7 @@ providers:
 inputs:
   - id: cel-qualys_gav-066eee3b-3015-4ffd-acc4-715ffa63b1d9
     name: qualys_gav-1
-    revision: 2
+    revision: 3
     type: cel
     use_output: default
     meta:
@@ -53,7 +53,7 @@ inputs:
           dataset: qualys_gav.asset
           type: logs
         config_version: 3
-        interval: 24h
+        interval: 6h
         resource.tracer:
           enabled: false
           filename: ../../logs/cel/http-request-trace-*.ndjson
@@ -63,7 +63,7 @@ inputs:
         resource.url: ${local.qualys_api}
         max_executions: 1000
         state:
-          batch_size: 100
+          batch_size: 300
           username: ${local.qualys_username}
           password: ${local.qualys_password}
           asset_id: 0
@@ -136,10 +136,10 @@ inputs:
                         "interval_start": state.interval.start,
                         "interval_id": state.interval.id,
                       }),
-                      "want_more": body.hasMore != 0,
+                      "want_more": body.hasMore != 0 && size(body.assetListData.asset) != 0,
                       "access_token": token.access_token,
                       "expiry": token.expiry,
-                      "asset_id": body.hasMore != 0 ? body.assetListData.asset.map(e, e.assetId).max() : 0,
+                      "asset_id": (body.hasMore != 0 && size(body.assetListData.asset) != 0) ? body.assetListData.asset.map(e, e.assetId).max() : 0,
                     })
                   :
                     (resp.StatusCode == 204) ?
