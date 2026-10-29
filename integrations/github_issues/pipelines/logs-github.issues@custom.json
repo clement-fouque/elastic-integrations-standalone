@@ -1,0 +1,10 @@
+{
+  "description": "Discard pull requests after the official GitHub issues pipeline normalizes them.",
+  "processors": [
+    {
+      "drop": {
+        "if": "ctx.github?.issues?.is_pr == true"
+      }
+    }
+  ]
+}

@@ -1,0 +1,55 @@
+{
+  "type": "esql",
+  "name": "GitHub Security Advisory Ingestion Stopped",
+  "description": "Generates an alert when one or more GitHub security advisory streams (reviewed, unreviewed, malware) have ingested no documents for 26 hours. Each stream polls every 24 hours, so a longer gap means the Elastic Agent, its CEL input, or the output to Elasticsearch has stopped.",
+  "enabled": true,
+  "version": 1,
+  "severity": "medium",
+  "risk_score": 47,
+  "language": "esql",
+  "query": "FROM logs-github.security_advisories-default\n| EVAL all_tags = MV_CONCAT(tags, \",\")\n| STATS reviewed = COUNT(*) WHERE all_tags LIKE \"*github-security-advisories-reviewed*\",\n        unreviewed = COUNT(*) WHERE all_tags LIKE \"*github-security-advisories-unreviewed*\",\n        malware = COUNT(*) WHERE all_tags LIKE \"*github-security-advisories-malware*\"\n| EVAL advisory_ingestion.silent_streams = REPLACE(TRIM(CONCAT(CASE(reviewed == 0, \"reviewed \", \"\"), CASE(unreviewed == 0, \"unreviewed \", \"\"), CASE(malware == 0, \"malware\", \"\"))), \" +\", \", \")\n| WHERE advisory_ingestion.silent_streams != \"\"\n| KEEP advisory_ingestion.silent_streams",
+  "interval": "1h",
+  "from": "now-26h",
+  "to": "now",
+  "timestamp_override": "event.ingested",
+  "max_signals": 100,
+  "alert_suppression": {
+    "group_by": ["advisory_ingestion.silent_streams"],
+    "duration": {"value": 24, "unit": "h"},
+    "missing_fields_strategy": "suppress"
+  },
+  "investigation_fields": {
+    "field_names": ["advisory_ingestion.silent_streams"]
+  },
+  "required_fields": [
+    {"name": "event.ingested", "type": "date"},
+    {"name": "tags", "type": "keyword"}
+  ],
+  "related_integrations": [
+    {"package": "github", "version": "^2.32.0"}
+  ],
+  "tags": [
+    "Data Source: GitHub",
+    "Use Case: Data Ingestion Health"
+  ],
+  "false_positives": [
+    "Planned Agent maintenance or a stack restart longer than two hours past a scheduled poll."
+  ],
+  "note": "## Triage and analysis\n\n- Check that the `github_security_advisories` Agent container is running and review its logs for CEL or output errors.\n- Check the **GitHub Security Advisory Ingestion Errors** rule for collection or pipeline errors on the same streams.\n- Restarting the Agent triggers an immediate poll.\n\nWhile streams stay silent the rule matches every hour; alerts are suppressed per set of silent streams for 24 hours, giving one reminder per day.",
+  "setup": "Requires the `github_security_advisories` standalone configuration from this repository, which tags each advisory stream with `github-security-advisories-<type>`. The data stream must exist (the Agent creates it on its first poll).",
+  "actions": [
+    {
+      "group": "default",
+      "id": "github-security-advisories-slack",
+      "action_type_id": ".slack",
+      "params": {
+        "message": ":mute: *GitHub advisory ingestion stopped*\n{{#context.alerts}}No documents ingested in the last 26 hours for: *{{advisory_ingestion.silent_streams}}*\n{{/context.alerts}}<{{{context.results_link}}}|View in Kibana>"
+      },
+      "frequency": {
+        "summary": true,
+        "notifyWhen": "onActiveAlert",
+        "throttle": "rule"
+      }
+    }
+  ]
+}

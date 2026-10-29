@@ -1,0 +1,25 @@
+name: elastic-github-issues
+
+services:
+  github_issues:
+    image: docker.elastic.co/elastic-agent/elastic-agent-wolfi:${ELASTIC_VERSION:?Set ELASTIC_VERSION to the stack version}
+    restart: unless-stopped
+    environment:
+      FLEET_ENROLL: "0"
+      # STATE_PATH: /usr/share/elastic-agent/state
+      ELASTIC_HOST: ${ELASTIC_HOST:?Set the container-side Elasticsearch URL}
+      ELASTIC_USERNAME: ${ELASTICSEARCH_USERNAME:?Set ELASTICSEARCH_USERNAME}
+      ELASTIC_PASSWORD: ${ELASTICSEARCH_PASSWORD:?Set ELASTICSEARCH_PASSWORD}
+      # Keep this version aligned with terraform.tfvars.
+      ELASTIC_INTEGRATION_GITHUB_VERSION: "3.0.0"
+      GITHUB_OWNER: ${GITHUB_ISSUES_OWNER:?Set GITHUB_ISSUES_OWNER}
+      GITHUB_REPOSITORY: ${GITHUB_ISSUES_REPOSITORY:?Set GITHUB_ISSUES_REPOSITORY}
+      GITHUB_TOKEN: ${GITHUB_ISSUES_GITHUB_TOKEN:?Set GITHUB_ISSUES_GITHUB_TOKEN}
+    network_mode: host
+    volumes:
+      - type: bind
+        source: ./integrations/github_issues/elastic-agent.yml
+        target: /usr/share/elastic-agent/elastic-agent.yml
+        read_only: true
+        bind:
+          create_host_path: false
