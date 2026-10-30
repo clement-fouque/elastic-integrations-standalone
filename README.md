@@ -154,6 +154,35 @@ echo '{"terms": {"vulnerability.id": ["CVE-2024-3094", "CVE-2026-110447"]}}' |
 
 `escli utils dump` writes bulk `index` actions, but data streams accept only `create`, hence the `sed`. Omit `--query -` to export the whole data stream. Then edit the documents by hand, keeping one action line before each document.
 
+#### FIRST EPSS Test Data
+
+`integrations/first_epss/data/data.ndjson` holds 10 real CVEs exported from the 2026-10-30 snapshot and edited to trigger both FIRST EPSS detection rules:
+
+| CVE | Snapshots in the file | Purpose |
+| --- | --- | --- |
+| CVE-2021-44228 | 2026-10-25: 0.99999 | Silent baseline above 0.99 for the *Score Above 99%* rule |
+| CVE-2024-3094 | 2026-10-27: 0.909, 2026-10-29: 0.992 | Goes above 0.99: alerts in *Score Above 99%* |
+| CVE-2026-110447 | 2026-10-27: 0.11634, 2026-10-29: 0.52 | Rises by 0.40: alerts in *Score Rise Above 0.2 in 3 Days* |
+| CVE-2023-31719 | 2026-10-27: 0.26032, 2026-10-29: 0.35 | Rises by 0.09: no alert |
+| 6 other CVEs | 2026-10-29 | Unchanged scores below 0.99: no alert |
+
+To edit a scenario, change `first_epss.vulnerability.date`, `first_epss.vulnerability.epss` and `first_epss.vulnerability.percentile`. Both rules only look at the last 3 days, so move the dates forward before each test: keep the baseline more than 3 days old, the other dates within the last 3 days, and all dates before the snapshot the Agent collects.
+
+The baseline document makes every real CVE above 0.99 in the snapshot the Agent collects look newly scored, so the *Score Above 99%* rule also alerts on those (about 280 CVEs, at most 100 per run). To test only the data file, load it without starting the Agent:
+
+```bash
+docker compose --project-directory . -f integrations/first_epss/compose.yml up first_epss_data
+```
+
+### Available Integrations
+
+Currently available integrations:
+
+- [**github_issues**](integrations/github_issues): GitHub issues for one repository
+- [**github_security_advisories**](integrations/github_security_advisories): GitHub global security advisories
+- [**cisa_kevs**](integrations/cisa_kevs): CISA Known Exploited Vulnerabilities catalog
+- [**first_epss**](integrations/first_epss): FIRST EPSS daily exploit prediction scores
+
 ## Configuration
 
 ### Elastic Agent Configuration

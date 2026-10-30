@@ -12,10 +12,25 @@ services:
       # Keep this version aligned with terraform.tfvars.
       ELASTIC_INTEGRATION_FIRST_EPSS_VERSION: "1.6.0"
     network_mode: host
+    depends_on:
+      first_epss_data:
+        condition: service_completed_successfully
     volumes:
       - type: bind
         source: ./integrations/first_epss/elastic-agent.yml
         target: /usr/share/elastic-agent/elastic-agent.yml
+        read_only: true
+        bind:
+          create_host_path: false
+
+  first_epss_data:
+    extends:
+      file: ./integrations/data.compose.yml
+      service: data
+    volumes:
+      - type: bind
+        source: ./integrations/first_epss/data
+        target: /data
         read_only: true
         bind:
           create_host_path: false
