@@ -1,0 +1,20 @@
+{
+  "template": {
+    "mappings": {
+      "properties": {
+        "error": {
+          "properties": {
+            "code": {"type": "keyword"},
+            "message": {"type": "match_only_text"}
+          }
+        },
+        "event": {
+          "properties": {
+            "kind": {"type": "keyword"}
+          }
+        },
+        "tags": {"type": "keyword"}
+      }
+    }
+  }
+}

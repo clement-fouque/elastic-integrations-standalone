@@ -1,0 +1,64 @@
+{
+  "type": "esql",
+  "name": "GitHub Security Advisory Ingestion Errors",
+  "description": "Generates an alert when GitHub security advisory ingestion produces documents with error fields. Collection errors come from failed GitHub API requests made by the Elastic Agent CEL input; pipeline errors come from failed ingest pipeline processors. One alert is raised per error kind, with the error count, affected advisory streams, error codes, and sample messages.",
+  "enabled": true,
+  "version": 1,
+  "severity": "medium",
+  "risk_score": 47,
+  "language": "esql",
+  "query": "FROM logs-github.security_advisories-default\n| WHERE error.code IS NOT NULL OR error.message IS NOT NULL\n| EVAL all_tags = MV_CONCAT(tags, \",\"),\n       advisory_ingestion.error_kind = CASE(event.kind == \"pipeline_error\", \"pipeline\", \"collection\"),\n       stream = CASE(all_tags LIKE \"*github-security-advisories-reviewed*\", \"reviewed\", all_tags LIKE \"*github-security-advisories-unreviewed*\", \"unreviewed\", all_tags LIKE \"*github-security-advisories-malware*\", \"malware\", \"unknown\"),\n       message = SUBSTRING(MV_CONCAT(error.message, \"; \"), 1, 300)\n| STATS advisory_ingestion.error_count = COUNT(*), codes = VALUES(error.code), messages = VALUES(message), streams = VALUES(stream) BY advisory_ingestion.error_kind\n| EVAL advisory_ingestion.error_codes = MV_CONCAT(codes, \", \"),\n       advisory_ingestion.error_messages = MV_CONCAT(MV_SLICE(messages, 0, 2), \"\\n\"),\n       advisory_ingestion.streams = MV_CONCAT(streams, \", \")\n| KEEP advisory_ingestion.*",
+  "interval": "1h",
+  "from": "now-70m",
+  "to": "now",
+  "timestamp_override": "event.ingested",
+  "max_signals": 100,
+  "alert_suppression": {
+    "group_by": ["advisory_ingestion.error_kind"],
+    "duration": {"value": 2, "unit": "h"},
+    "missing_fields_strategy": "suppress"
+  },
+  "investigation_fields": {
+    "field_names": [
+      "advisory_ingestion.error_kind",
+      "advisory_ingestion.error_count",
+      "advisory_ingestion.streams",
+      "advisory_ingestion.error_codes",
+      "advisory_ingestion.error_messages"
+    ]
+  },
+  "required_fields": [
+    {"name": "error.code", "type": "keyword"},
+    {"name": "error.message", "type": "match_only_text"},
+    {"name": "event.ingested", "type": "date"},
+    {"name": "event.kind", "type": "keyword"},
+    {"name": "tags", "type": "keyword"}
+  ],
+  "related_integrations": [
+    {"package": "github", "version": "^2.32.0"}
+  ],
+  "tags": [
+    "Data Source: GitHub",
+    "Use Case: Data Ingestion Health"
+  ],
+  "false_positives": [
+    "Transient GitHub API failures such as rate limiting (403/429) or 5xx responses can recover on the next 24-hour poll without intervention."
+  ],
+  "note": "## Triage and analysis\n\n- `collection` errors are GitHub API responses other than HTTP 200. Check `advisory_ingestion.error_codes`: 401/403 usually mean an invalid or rate-limited `GITHUB_SECURITY_ADVISORIES_API_KEY`, 5xx is a GitHub outage. The failed poll resumes at the next 24-hour interval or on Agent restart.\n- `pipeline` errors mean an ingest processor failed. The original event is kept; search `logs-github.security_advisories-default` for `event.kind: pipeline_error` and compare the document with the GitHub package version.\n\nAlerts are grouped per error kind and suppressed per kind for 2 hours, covering the 10-minute lookback overlap.",
+  "setup": "Requires the `github_security_advisories` standalone configuration from this repository, which tags each advisory stream with `github-security-advisories-<type>` and maps `error.*`, `event.kind`, and `tags` through the `logs-github.security_advisories@custom` component template.",
+  "actions": [
+    {
+      "group": "default",
+      "id": "github-security-advisories-slack",
+      "action_type_id": ".slack",
+      "params": {
+        "message": ":warning: *GitHub advisory ingestion errors*\n{{#context.alerts}}• *{{advisory_ingestion.error_kind}}*: {{advisory_ingestion.error_count}} error(s) in streams {{advisory_ingestion.streams}}{{#advisory_ingestion.error_codes}} (codes: {{advisory_ingestion.error_codes}}){{/advisory_ingestion.error_codes}}\n```{{advisory_ingestion.error_messages}}```\n{{/context.alerts}}<{{{context.results_link}}}|View in Kibana>"
+      },
+      "frequency": {
+        "summary": true,
+        "notifyWhen": "onActiveAlert",
+        "throttle": "rule"
+      }
+    }
+  ]
+}
