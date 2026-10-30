@@ -1,0 +1,95 @@
+{
+  "type": "esql",
+  "name": "FIRST EPSS Score Rise Above 0.2 in 3 Days",
+  "description": "Generates an alert when a CVE's FIRST Exploit Prediction Scoring System (EPSS) score rises by at least 0.2 between its first and latest daily snapshot in the last 3 days, meaning its probability of exploitation in the wild in the next 30 days jumped by at least 20 points. CVEs first published within the window have no earlier score and are covered by the FIRST EPSS Score Above 99% rule.",
+  "enabled": true,
+  "version": 1,
+  "severity": "medium",
+  "risk_score": 47,
+  "language": "esql",
+  "query": "FROM logs-first_epss.vulnerability-default\n| WHERE first_epss.vulnerability.date >= DATE_TRUNC(1 day, NOW()) - 3 days\n| STATS first_epss.vulnerability.previous_epss = FIRST(first_epss.vulnerability.epss, first_epss.vulnerability.date), first_epss.vulnerability.previous_date = MIN(first_epss.vulnerability.date), first_epss.vulnerability.epss = LAST(first_epss.vulnerability.epss, first_epss.vulnerability.date), first_epss.vulnerability.percentile = LAST(first_epss.vulnerability.percentile, first_epss.vulnerability.date), first_epss.vulnerability.date = MAX(first_epss.vulnerability.date) BY vulnerability.id\n| EVAL first_epss.vulnerability.epss_rise = first_epss.vulnerability.epss - first_epss.vulnerability.previous_epss\n| WHERE first_epss.vulnerability.epss_rise >= 0.2\n| EVAL first_epss.vulnerability.epss = ROUND(first_epss.vulnerability.epss, 5), first_epss.vulnerability.percentile = ROUND(first_epss.vulnerability.percentile, 5), first_epss.vulnerability.previous_epss = ROUND(first_epss.vulnerability.previous_epss, 5), first_epss.vulnerability.epss_rise = ROUND(first_epss.vulnerability.epss_rise, 5)\n| SORT first_epss.vulnerability.epss_rise DESC\n| KEEP vulnerability.id, first_epss.vulnerability.epss_rise, first_epss.vulnerability.previous_epss, first_epss.vulnerability.previous_date, first_epss.vulnerability.epss, first_epss.vulnerability.percentile, first_epss.vulnerability.date",
+  "interval": "1h",
+  "from": "now-4d",
+  "to": "now",
+  "timestamp_override": "event.ingested",
+  "max_signals": 100,
+  "alert_suppression": {
+    "group_by": ["vulnerability.id"],
+    "duration": {"value": 72, "unit": "h"},
+    "missing_fields_strategy": "suppress"
+  },
+  "investigation_fields": {
+    "field_names": [
+      "vulnerability.id",
+      "first_epss.vulnerability.epss_rise",
+      "first_epss.vulnerability.previous_epss",
+      "first_epss.vulnerability.previous_date",
+      "first_epss.vulnerability.epss",
+      "first_epss.vulnerability.percentile",
+      "first_epss.vulnerability.date"
+    ]
+  },
+  "required_fields": [
+    {"name": "vulnerability.id", "type": "keyword"},
+    {"name": "first_epss.vulnerability.epss", "type": "float"},
+    {"name": "first_epss.vulnerability.percentile", "type": "float"},
+    {"name": "first_epss.vulnerability.date", "type": "date"},
+    {"name": "event.ingested", "type": "date"}
+  ],
+  "related_integrations": [
+    {"package": "first_epss", "version": "^1.6.0"}
+  ],
+  "tags": [
+    "Data Source: FIRST EPSS",
+    "Use Case: Vulnerability"
+  ],
+  "references": [
+    "https://www.first.org/epss/",
+    "https://api.first.org/epss/",
+    "https://vulnerability.circl.lu/"
+  ],
+  "false_positives": [
+    "A rising EPSS score predicts exploitation somewhere, not in your environment. An alert is benign when the affected product is not deployed or is already patched."
+  ],
+  "note": "## Triage and analysis\n\n- Open the CVE in vulnerability-lookup and review the affected products and available fixes.\n- Search asset inventories, vulnerability scanners, and SBOMs for the affected product versions.\n- If present, prioritize remediation; check whether the CVE is also in the CISA KEV catalog.\n\nThe rise is the latest score minus the score of the earliest snapshot since midnight UTC 3 days ago, so it spans up to 3 daily changes. Falling scores never alert. Alerts are suppressed per CVE for 72 hours, the life of a rise within the window.",
+  "setup": "Requires the `first_epss` standalone configuration from this repository, which collects daily FIRST EPSS snapshots into `logs-first_epss.vulnerability-default` using First EPSS integration 1.6.0. The rule needs snapshots from the last 3 days.",
+  "actions": [
+    {
+      "group": "default",
+      "id": "first-epss-slack",
+      "action_type_id": ".slack",
+      "params": {
+        "message": ":chart_with_upwards_trend: *FIRST EPSS: {{state.signals_count}} CVEs rose by at least 0.2 in 3 days*\n{{#context.alerts}}- <https://vulnerability.circl.lu/vuln/{{{vulnerability.id}}}|{{{vulnerability.id}}}> — EPSS {{first_epss.vulnerability.previous_epss}} ({{first_epss.vulnerability.previous_date}}) → {{first_epss.vulnerability.epss}} ({{first_epss.vulnerability.date}}) — +{{first_epss.vulnerability.epss_rise}}\n{{/context.alerts}}{{#context.results_link}}<{{{context.results_link}}}|View in Kibana>{{/context.results_link}}"
+      },
+      "frequency": {
+        "summary": true,
+        "notifyWhen": "onActiveAlert",
+        "throttle": "rule"
+      }
+    }
+  ],
+  "threat": [
+    {
+      "framework": "MITRE ATT&CK",
+      "tactic": {
+        "id": "TA0042",
+        "name": "Resource Development",
+        "reference": "https://attack.mitre.org/tactics/TA0042/"
+      },
+      "technique": [
+        {
+          "id": "T1588",
+          "name": "Obtain Capabilities",
+          "reference": "https://attack.mitre.org/techniques/T1588/",
+          "subtechnique": [
+            {
+              "id": "T1588.006",
+              "name": "Vulnerabilities",
+              "reference": "https://attack.mitre.org/techniques/T1588/006/"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

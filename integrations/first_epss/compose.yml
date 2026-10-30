@@ -1,6 +1,18 @@
 name: elastic-first-epss
 
 services:
+  first_epss_data:
+    extends:
+      file: ./integrations/first_epss/data.compose.yml
+      service: data
+    volumes:
+      - type: bind
+        source: ./integrations/first_epss/data
+        target: /data
+        read_only: true
+        bind:
+          create_host_path: false
+  
   first_epss:
     image: docker.elastic.co/elastic-agent/elastic-agent-wolfi:${ELASTIC_VERSION:?Set ELASTIC_VERSION to the stack version}
     restart: unless-stopped
@@ -12,6 +24,9 @@ services:
       # Keep this version aligned with terraform.tfvars.
       ELASTIC_INTEGRATION_FIRST_EPSS_VERSION: "1.6.0"
     network_mode: host
+    depends_on:
+      first_epss_data:
+        condition: service_completed_successfully
     volumes:
       - type: bind
         source: ./integrations/first_epss/elastic-agent.yml

@@ -43,6 +43,8 @@ The Agent uses `host` network mode. It is supported natively on Linux; Docker De
 └── integrations/
     └── <integration_name>/
         ├── compose.yml              # Agent container
+        ├── data.compose.yml         # Optional: escli service that loads data before the Agent
+        ├── data/data.ndjson         # Optional: documents loaded before the Agent starts
         ├── elastic-agent.yml        # Elastic Agent configuration
         ├── terraform.tfvars         # Fleet package versions
         ├── pipelines/               # Optional: ingest pipelines
@@ -105,6 +107,71 @@ Each target can also be run on its own, for example `make tofu-plan INTEGRATION=
 
 ```bash
 make stack-restart version=9.5.5
+```
+
+### Loading Data Before the Agent
+
+An integration can load documents into its data stream before its Agent starts, for example to give detection rules the history they need. The documents live in `integrations/<integration_name>/data/data.ndjson` and are loaded by [escli](https://github.com/Anaethelion/escli-rs) (`ghcr.io/anaethelion/escli:0.2.0-alpha`), using the Elasticsearch username and password from `.env`.
+
+The `data` service in `integrations/<integration_name>/data.compose.yml` runs `escli utils load --pipeline _none /data/data.ndjson` once and exits. The documents are already processed, so the integration's default ingest pipeline is skipped; the Fleet final pipeline still sets `event.ingested` to the load time. The image is published for `linux/amd64` only and runs emulated on arm64 hosts.
+
+To enable it for an integration, copy `integrations/first_epss/data.compose.yml` into the integration folder. In its `compose.yml`, add a `<integration_name>_data` service that extends it and mounts the data directory, then make the Agent wait for it:
+
+```yaml
+services:
+  <integration_name>:
+    # ...
+    depends_on:
+      <integration_name>_data:
+        condition: service_completed_successfully
+
+  <integration_name>_data:
+    extends:
+      file: ./integrations/<integration_name>/data.compose.yml
+      service: data
+    volumes:
+      - type: bind
+        source: ./integrations/<integration_name>/data
+        target: /data
+        read_only: true
+        bind:
+          create_host_path: false
+```
+
+`make agent-restart` and `make deploy-local` then load the file before every Agent start, after OpenTofu has installed the integration's templates and pipelines. Loading is not deduplicated: run it against a fresh stack, and do not include dates that the Agent will also collect. If any document fails, the service exits with an error and the Agent does not start.
+
+#### Exporting Data With escli
+
+Export documents from a stack that already runs the integration, reusing the data service and its `.env` credentials. Pass an Elasticsearch query clause (not a full search body) on stdin to select a few documents:
+
+```bash
+echo '{"terms": {"vulnerability.id": ["CVE-2024-3094", "CVE-2026-110447"]}}' |
+  docker compose --project-directory . -f integrations/<integration_name>/compose.yml \
+    run --rm --no-deps -T <integration_name>_data \
+    utils dump logs-<dataset>-default --query - |
+  sed 's/^{"index":{/{"create":{/' > integrations/<integration_name>/data/data.ndjson
+```
+
+`escli utils dump` writes bulk `index` actions, but data streams accept only `create`, hence the `sed`. Omit `--query -` to export the whole data stream. Then edit the documents by hand, keeping one action line before each document.
+
+#### FIRST EPSS Test Data
+
+`integrations/first_epss/data/data.ndjson` holds 10 real CVEs exported from the 2026-10-30 snapshot and edited to trigger both FIRST EPSS detection rules:
+
+| CVE | Snapshots in the file | Purpose |
+| --- | --- | --- |
+| CVE-2021-44228 | 2026-10-25: 0.99999 | Silent baseline above 0.99 for the *Score Above 99%* rule |
+| CVE-2024-3094 | 2026-10-27: 0.909, 2026-10-29: 0.992 | Goes above 0.99: alerts in *Score Above 99%* |
+| CVE-2026-110447 | 2026-10-27: 0.11634, 2026-10-29: 0.52 | Rises by 0.40: alerts in *Score Rise Above 0.2 in 3 Days* |
+| CVE-2023-31719 | 2026-10-27: 0.26032, 2026-10-29: 0.35 | Rises by 0.09: no alert |
+| 6 other CVEs | 2026-10-29 | Unchanged scores below 0.99: no alert |
+
+To edit a scenario, change `first_epss.vulnerability.date`, `first_epss.vulnerability.epss` and `first_epss.vulnerability.percentile`. Both rules only look at the last 3 days, so move the dates forward before each test: keep the baseline more than 3 days old, the other dates within the last 3 days, and all dates before the snapshot the Agent collects.
+
+The baseline document makes every real CVE above 0.99 in the snapshot the Agent collects look newly scored, so the *Score Above 99%* rule also alerts on those (about 280 CVEs, at most 100 per run). To test only the data file, load it without starting the Agent:
+
+```bash
+docker compose --project-directory . -f integrations/first_epss/compose.yml up first_epss_data
 ```
 
 ### Available Integrations
@@ -183,7 +250,7 @@ The Agent cursor lives only in the container filesystem, so the next start colle
 When adding new integrations:
 
 1. Create a new directory under `integrations/` with `compose.yml`, `elastic-agent.yml` and `terraform.tfvars`
-2. Add any asset JSON files in the resource folders supported by the shared module
+2. Add any asset JSON files in the resource folders supported by the shared module, and optionally a `data/data.ndjson` file (see [Loading Data Before the Agent](#loading-data-before-the-agent))
 3. Create an OpenTofu root under `infrastructure/<name>/` that calls `../modules/integration`
 4. Add any required environment variables, prefixed with the integration name, to `.env.example`
 5. Update this README with the new integration details
