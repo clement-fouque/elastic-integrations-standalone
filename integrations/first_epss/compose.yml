@@ -1,6 +1,18 @@
 name: elastic-first-epss
 
 services:
+  first_epss_data:
+    extends:
+      file: ./integrations/first_epss/data.compose.yml
+      service: data
+    volumes:
+      - type: bind
+        source: ./integrations/first_epss/data
+        target: /data
+        read_only: true
+        bind:
+          create_host_path: false
+  
   first_epss:
     image: docker.elastic.co/elastic-agent/elastic-agent-wolfi:${ELASTIC_VERSION:?Set ELASTIC_VERSION to the stack version}
     restart: unless-stopped
@@ -19,18 +31,6 @@ services:
       - type: bind
         source: ./integrations/first_epss/elastic-agent.yml
         target: /usr/share/elastic-agent/elastic-agent.yml
-        read_only: true
-        bind:
-          create_host_path: false
-
-  first_epss_data:
-    extends:
-      file: ./integrations/first_epss/data.compose.yml
-      service: data
-    volumes:
-      - type: bind
-        source: ./integrations/first_epss/data
-        target: /data
         read_only: true
         bind:
           create_host_path: false
