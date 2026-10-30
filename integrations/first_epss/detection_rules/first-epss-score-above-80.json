@@ -1,0 +1,93 @@
+{
+  "type": "esql",
+  "name": "FIRST EPSS Score Above 80%",
+  "description": "Generates an alert the first time a CVE's FIRST Exploit Prediction Scoring System (EPSS) score goes above 0.8, meaning a probability above 80% that the vulnerability is exploited in the wild in the next 30 days. Each CVE alerts once within the 365-day retention, including CVEs first scored above 0.8. CVEs already above 0.8 in the oldest retained snapshot form a silent baseline.",
+  "enabled": true,
+  "version": 1,
+  "severity": "high",
+  "risk_score": 73,
+  "language": "esql",
+  "query": "FROM logs-first_epss.vulnerability-default METADATA _id, _index, _version\n| WHERE first_epss.vulnerability.epss > 0.8\n| INLINE STATS first_high_id = FIRST(_id, event.ingested), first_high_date = MIN(first_epss.vulnerability.date) BY vulnerability.id\n| INLINE STATS baseline_date = MIN(first_epss.vulnerability.date)\n| WHERE _id == first_high_id AND first_high_date > baseline_date AND first_high_date >= NOW() - 3 days\n| EVAL first_epss.vulnerability.epss = ROUND(first_epss.vulnerability.epss, 5), first_epss.vulnerability.percentile = ROUND(first_epss.vulnerability.percentile, 5)\n| DROP first_high_id, first_high_date, baseline_date",
+  "interval": "1h",
+  "from": "now-365d",
+  "to": "now",
+  "timestamp_override": "event.ingested",
+  "max_signals": 100,
+  "alert_suppression": {
+    "group_by": ["vulnerability.id"],
+    "duration": {"value": 72, "unit": "h"},
+    "missing_fields_strategy": "suppress"
+  },
+  "investigation_fields": {
+    "field_names": [
+      "vulnerability.id",
+      "first_epss.vulnerability.epss",
+      "first_epss.vulnerability.percentile",
+      "first_epss.vulnerability.date",
+      "vulnerability.reference"
+    ]
+  },
+  "required_fields": [
+    {"name": "vulnerability.id", "type": "keyword"},
+    {"name": "first_epss.vulnerability.epss", "type": "float"},
+    {"name": "first_epss.vulnerability.percentile", "type": "float"},
+    {"name": "first_epss.vulnerability.date", "type": "date"},
+    {"name": "event.ingested", "type": "date"}
+  ],
+  "related_integrations": [
+    {"package": "first_epss", "version": "^1.6.0"}
+  ],
+  "tags": [
+    "Data Source: FIRST EPSS",
+    "Use Case: Vulnerability"
+  ],
+  "references": [
+    "https://www.first.org/epss/",
+    "https://api.first.org/epss/",
+    "https://vulnerability.circl.lu/"
+  ],
+  "false_positives": [
+    "A high EPSS score predicts exploitation somewhere, not in your environment. An alert is benign when the affected product is not deployed or is already patched."
+  ],
+  "note": "## Triage and analysis\n\n- Open the CVE in vulnerability-lookup and review the affected products and available fixes.\n- Search asset inventories, vulnerability scanners, and SBOMs for the affected product versions.\n- If present, prioritize remediation; check whether the CVE is also in the CISA KEV catalog.\n\nThe Agent ingests each daily EPSS snapshot once. The rule picks, per CVE, the earliest-ingested document above 0.8, so re-ingested duplicates and later snapshots never alert again; the alert ID comes from that document. CVEs above 0.8 in the oldest snapshot within the 365-day window are a silent baseline, so the first deployment does not alert. A CVE that stays at or below 0.8 for longer than the retention can alert again.",
+  "setup": "Requires the `first_epss` standalone configuration from this repository, which collects daily FIRST EPSS snapshots into `logs-first_epss.vulnerability-default` using First EPSS integration 1.6.0 and keeps them for 365 days.",
+  "actions": [
+    {
+      "group": "default",
+      "id": "first-epss-slack",
+      "action_type_id": ".slack",
+      "params": {
+        "message": ":chart_with_upwards_trend: *FIRST EPSS: {{state.signals_count}} CVEs went above an 80% exploitation probability*\n{{#context.alerts}}- <https://vulnerability.circl.lu/vuln/{{{vulnerability.id}}}|{{{vulnerability.id}}}> — EPSS {{first_epss.vulnerability.epss}} — percentile {{first_epss.vulnerability.percentile}} — {{first_epss.vulnerability.date}}\n{{/context.alerts}}{{#context.results_link}}<{{{context.results_link}}}|View in Kibana>{{/context.results_link}}"
+      },
+      "frequency": {
+        "summary": true,
+        "notifyWhen": "onActiveAlert",
+        "throttle": "rule"
+      }
+    }
+  ],
+  "threat": [
+    {
+      "framework": "MITRE ATT&CK",
+      "tactic": {
+        "id": "TA0042",
+        "name": "Resource Development",
+        "reference": "https://attack.mitre.org/tactics/TA0042/"
+      },
+      "technique": [
+        {
+          "id": "T1588",
+          "name": "Obtain Capabilities",
+          "reference": "https://attack.mitre.org/techniques/T1588/",
+          "subtechnique": [
+            {
+              "id": "T1588.006",
+              "name": "Vulnerabilities",
+              "reference": "https://attack.mitre.org/techniques/T1588/006/"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

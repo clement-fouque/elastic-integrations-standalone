@@ -1,0 +1,111 @@
+outputs:
+  default:
+    type: elasticsearch
+    hosts:
+      - ${ELASTIC_HOST}
+    username: ${ELASTIC_USERNAME}
+    password: ${ELASTIC_PASSWORD}
+    ssl.verification_mode: none
+    preset: throughput
+
+agent:
+  download:
+    sourceURI: "https://artifacts.elastic.co/downloads/"
+  monitoring:
+    enabled: false
+    use_output: default
+    namespace: default
+    logs: false
+    metrics: false
+  features: {}
+
+inputs:
+  - id: cel-first-epss
+    name: first-epss
+    revision: 1
+    type: cel
+    use_output: default
+    meta:
+      package:
+        name: first_epss
+        version: ${env.ELASTIC_INTEGRATION_FIRST_EPSS_VERSION}
+    data_stream:
+      namespace: default
+    streams:
+      - id: cel-first_epss.vulnerability
+        data_stream:
+          dataset: first_epss.vulnerability
+          type: logs
+        config_version: 2
+        # EPSS publishes one snapshot per day. Each hourly run makes a single
+        # 1-record request and only pages through the full catalog when the
+        # snapshot date is newer than cursor.last_date.
+        interval: 1h
+        resource.tracer:
+          enabled: false
+          filename: "../../logs/cel/http-request-trace-*.ndjson"
+          maxbackups: 5
+        resource.url: https://api.first.org/data/v1/epss
+        resource.timeout: 10m
+        state:
+          batch_size: 10000
+        redact:
+          fields: ~
+        max_executions: 100
+        # The input stops a periodic run on an execution without events, so the
+        # date check and the first page share one execution. Pages pin the
+        # snapshot date and sort by CVE for stable offsets.
+        program: |-
+          (
+            state.?cursor.offset.hasValue() ?
+              {"date": state.cursor.date, "offset": state.cursor.offset}
+            :
+              request("GET", state.url + "?" + {"limit": ["1"]}.format_query()).do_request().as(check,
+                (check.StatusCode != 200) ?
+                  {"error": {"code": string(check.StatusCode), "id": string(check.Status), "message": "GET latest snapshot date: " + ((size(check.Body) != 0) ? string(check.Body) : string(check.Status))}}
+                :
+                  bytes(check.Body).decode_json().as(body,
+                    (size(body.data) == 0 || body.data[0].date == state.?cursor.last_date.orValue("")) ?
+                      {}
+                    :
+                      {"date": body.data[0].date, "offset": 0}
+                  )
+              )
+          ).as(target,
+            has(target.error) ?
+              state.with({"events": {"error": target.error}, "want_more": false})
+            : !has(target.date) ?
+              state.with({"events": [], "want_more": false})
+            :
+              request("GET", state.url + "?" + {
+                "date": [target.date],
+                "limit": [string(state.batch_size)],
+                "offset": [string(int(target.offset))],
+                "sort": ["cve"],
+              }.format_query()).do_request().as(resp,
+                (resp.StatusCode != 200) ?
+                  state.with({
+                    "events": {"error": {"code": string(resp.StatusCode), "id": string(resp.Status), "message": "GET snapshot " + target.date + " at offset " + string(int(target.offset)) + ": " + ((size(resp.Body) != 0) ? string(resp.Body) : string(resp.Status))}},
+                    "want_more": false,
+                  })
+                :
+                  bytes(resp.Body).decode_json().as(body,
+                    (int(body.offset) + int(body.limit) < int(body.total)).as(more,
+                      state.with({
+                        "events": body.data.map(v, {"message": v.encode_json()}),
+                        "cursor": more ?
+                          {?"last_date": state.?cursor.last_date, "date": target.date, "offset": int(body.offset) + int(body.limit)}
+                        :
+                          {"last_date": target.date},
+                        "want_more": more,
+                      })
+                    )
+                  )
+              )
+          )
+        tags:
+          - forwarded
+          - first-epss
+        publisher_pipeline.disable_host: true
+
+agent.logging.to_stderr: true

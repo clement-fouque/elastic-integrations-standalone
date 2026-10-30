@@ -114,6 +114,7 @@ Currently available integrations:
 - [**github_issues**](integrations/github_issues): GitHub issues for one repository
 - [**github_security_advisories**](integrations/github_security_advisories): GitHub global security advisories
 - [**cisa_kevs**](integrations/cisa_kevs): CISA Known Exploited Vulnerabilities catalog
+- [**first_epss**](integrations/first_epss): FIRST EPSS daily exploit prediction scores
 
 ## Configuration
 
