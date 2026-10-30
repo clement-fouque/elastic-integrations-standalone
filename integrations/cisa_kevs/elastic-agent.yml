@@ -1,0 +1,83 @@
+outputs:
+  default:
+    type: elasticsearch
+    hosts:
+      - ${ELASTIC_HOST}
+    username: ${ELASTIC_USERNAME}
+    password: ${ELASTIC_PASSWORD}
+    ssl.verification_mode: none
+    preset: throughput
+
+agent:
+  download:
+    sourceURI: "https://artifacts.elastic.co/downloads/"
+  monitoring:
+    enabled: false
+    use_output: default
+    namespace: default
+    logs: false
+    metrics: false
+  features: {}
+
+inputs:
+  - id: cel-cisa-kevs
+    name: cisa-kevs
+    revision: 1
+    type: cel
+    use_output: default
+    meta:
+      package:
+        name: cisa_kevs
+        version: ${env.ELASTIC_INTEGRATION_CISA_KEVS_VERSION}
+    data_stream:
+      namespace: default
+    streams:
+      - id: cel-cisa_kevs.vulnerability
+        data_stream:
+          dataset: cisa_kevs.vulnerability
+          type: logs
+        config_version: 2
+        interval: 60m
+        resource.tracer:
+          enabled: false
+          filename: "../../logs/cel/http-request-trace-*.ndjson"
+          maxbackups: 5
+        resource.url: https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json
+        resource.timeout: 30s
+        redact:
+          fields: ~
+        program: |-
+          get_request(state.url).with(
+            {
+              "Header": {
+                "Content-Type": ["application/json"],
+              },
+            }
+          ).do_request().as(resp, resp.StatusCode == 200 ?
+            dyn({
+              "events": bytes(resp.Body).decode_json().vulnerabilities.map(v,
+                {"message": v.encode_json()}
+              )
+            })
+          :
+            dyn({
+              "events": {
+                "error": {
+                  "code": string(resp.StatusCode),
+                  "id": string(resp.Status),
+                  "message": "GET: "+(
+                    size(resp.Body) != 0 ?
+                      string(resp.Body)
+                    :
+                      string(resp.Status) + ' (' + string(resp.StatusCode) + ')'
+                  ),
+                },
+              },
+            })
+          )
+        tags:
+          - forwarded
+          - cisa-kev
+        publisher_pipeline.disable_host: true
+
+agent.logging.to_stderr: true
