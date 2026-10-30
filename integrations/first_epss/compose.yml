@@ -1,0 +1,21 @@
+name: elastic-first-epss
+
+services:
+  first_epss:
+    image: docker.elastic.co/elastic-agent/elastic-agent-wolfi:${ELASTIC_VERSION:?Set ELASTIC_VERSION to the stack version}
+    restart: unless-stopped
+    environment:
+      FLEET_ENROLL: "0"
+      ELASTIC_HOST: ${ELASTIC_HOST:?Set the container-side Elasticsearch URL}
+      ELASTIC_USERNAME: ${ELASTICSEARCH_USERNAME:?Set ELASTICSEARCH_USERNAME}
+      ELASTIC_PASSWORD: ${ELASTICSEARCH_PASSWORD:?Set ELASTICSEARCH_PASSWORD}
+      # Keep this version aligned with terraform.tfvars.
+      ELASTIC_INTEGRATION_FIRST_EPSS_VERSION: "1.6.0"
+    network_mode: host
+    volumes:
+      - type: bind
+        source: ./integrations/first_epss/elastic-agent.yml
+        target: /usr/share/elastic-agent/elastic-agent.yml
+        read_only: true
+        bind:
+          create_host_path: false
