@@ -1,0 +1,18 @@
+# Shared one-shot service that bulk loads integrations/<name>/data/data.ndjson
+# with escli before the Agent starts. Integrations extend it and bind the
+# data directory to /data; see "Loading Data Before the Agent" in the README.
+services:
+  data:
+    # Published for linux/amd64 only; runs emulated on arm64 hosts.
+    image: ghcr.io/anaethelion/escli:0.2.0-alpha
+    platform: linux/amd64
+    restart: "no"
+    environment:
+      ESCLI_URL: ${ELASTIC_HOST:?Set the container-side Elasticsearch URL}
+      ESCLI_USERNAME: ${ELASTICSEARCH_USERNAME:?Set ELASTICSEARCH_USERNAME}
+      ESCLI_PASSWORD: ${ELASTICSEARCH_PASSWORD:?Set ELASTICSEARCH_PASSWORD}
+      ESCLI_INSECURE: "true"
+    network_mode: host
+    # Documents are already processed exports, so skip the default ingest
+    # pipeline. The Fleet final pipeline still sets event.ingested to load time.
+    command: ["utils", "load", "--pipeline", "_none", "/data/data.ndjson"]

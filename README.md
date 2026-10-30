@@ -41,8 +41,10 @@ The Agent uses `host` network mode. It is supported natively on Linux; Docker De
 │   ├── modules/integration/         # Shared OpenTofu module
 │   └── <integration_name>/          # OpenTofu root, one per integration
 └── integrations/
+    ├── data.compose.yml             # Shared escli service that loads data before the Agent
     └── <integration_name>/
         ├── compose.yml              # Agent container
+        ├── data/data.ndjson         # Optional: documents loaded before the Agent starts
         ├── elastic-agent.yml        # Elastic Agent configuration
         ├── terraform.tfvars         # Fleet package versions
         ├── pipelines/               # Optional: ingest pipelines
@@ -107,14 +109,50 @@ Each target can also be run on its own, for example `make tofu-plan INTEGRATION=
 make stack-restart version=9.5.5
 ```
 
-### Available Integrations
+### Loading Data Before the Agent
 
-Currently available integrations:
+An integration can load documents into its data stream before its Agent starts, for example to give detection rules the history they need. The documents live in `integrations/<integration_name>/data/data.ndjson` and are loaded by [escli](https://github.com/Anaethelion/escli-rs) (`ghcr.io/anaethelion/escli:0.2.0-alpha`), using the Elasticsearch username and password from `.env`.
 
-- [**github_issues**](integrations/github_issues): GitHub issues for one repository
-- [**github_security_advisories**](integrations/github_security_advisories): GitHub global security advisories
-- [**cisa_kevs**](integrations/cisa_kevs): CISA Known Exploited Vulnerabilities catalog
-- [**first_epss**](integrations/first_epss): FIRST EPSS daily exploit prediction scores
+The shared `data` service in `integrations/data.compose.yml` runs `escli utils load --pipeline _none /data/data.ndjson` once and exits. The documents are already processed, so the integration's default ingest pipeline is skipped; the Fleet final pipeline still sets `event.ingested` to the load time. The image is published for `linux/amd64` only and runs emulated on arm64 hosts.
+
+To enable it for an integration, add a `<integration_name>_data` service that extends the shared service and mounts the data directory, then make the Agent wait for it:
+
+```yaml
+services:
+  <integration_name>:
+    # ...
+    depends_on:
+      <integration_name>_data:
+        condition: service_completed_successfully
+
+  <integration_name>_data:
+    extends:
+      file: ./integrations/data.compose.yml
+      service: data
+    volumes:
+      - type: bind
+        source: ./integrations/<integration_name>/data
+        target: /data
+        read_only: true
+        bind:
+          create_host_path: false
+```
+
+`make agent-restart` and `make deploy-local` then load the file before every Agent start, after OpenTofu has installed the integration's templates and pipelines. Loading is not deduplicated: run it against a fresh stack, and do not include dates that the Agent will also collect. If any document fails, the service exits with an error and the Agent does not start.
+
+#### Exporting Data With escli
+
+Export documents from a stack that already runs the integration, reusing the data service and its `.env` credentials. Pass an Elasticsearch query clause (not a full search body) on stdin to select a few documents:
+
+```bash
+echo '{"terms": {"vulnerability.id": ["CVE-2024-3094", "CVE-2026-110447"]}}' |
+  docker compose --project-directory . -f integrations/<integration_name>/compose.yml \
+    run --rm --no-deps -T <integration_name>_data \
+    utils dump logs-<dataset>-default --query - |
+  sed 's/^{"index":{/{"create":{/' > integrations/<integration_name>/data/data.ndjson
+```
+
+`escli utils dump` writes bulk `index` actions, but data streams accept only `create`, hence the `sed`. Omit `--query -` to export the whole data stream. Then edit the documents by hand, keeping one action line before each document.
 
 ## Configuration
 
@@ -183,7 +221,7 @@ The Agent cursor lives only in the container filesystem, so the next start colle
 When adding new integrations:
 
 1. Create a new directory under `integrations/` with `compose.yml`, `elastic-agent.yml` and `terraform.tfvars`
-2. Add any asset JSON files in the resource folders supported by the shared module
+2. Add any asset JSON files in the resource folders supported by the shared module, and optionally a `data/data.ndjson` file (see [Loading Data Before the Agent](#loading-data-before-the-agent))
 3. Create an OpenTofu root under `infrastructure/<name>/` that calls `../modules/integration`
 4. Add any required environment variables, prefixed with the integration name, to `.env.example`
 5. Update this README with the new integration details
