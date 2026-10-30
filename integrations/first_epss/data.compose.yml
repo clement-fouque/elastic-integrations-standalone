@@ -1,6 +1,6 @@
-# Shared one-shot service that bulk loads integrations/<name>/data/data.ndjson
-# with escli before the Agent starts. Integrations extend it and bind the
-# data directory to /data; see "Loading Data Before the Agent" in the README.
+# One-shot service that bulk loads data/data.ndjson with escli before the
+# Agent starts. compose.yml extends it and binds the data directory to /data;
+# see "Loading Data Before the Agent" in the README.
 services:
   data:
     # Published for linux/amd64 only; runs emulated on arm64 hosts.

@@ -25,7 +25,7 @@ services:
 
   first_epss_data:
     extends:
-      file: ./integrations/data.compose.yml
+      file: ./integrations/first_epss/data.compose.yml
       service: data
     volumes:
       - type: bind

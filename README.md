@@ -41,9 +41,9 @@ The Agent uses `host` network mode. It is supported natively on Linux; Docker De
 │   ├── modules/integration/         # Shared OpenTofu module
 │   └── <integration_name>/          # OpenTofu root, one per integration
 └── integrations/
-    ├── data.compose.yml             # Shared escli service that loads data before the Agent
     └── <integration_name>/
         ├── compose.yml              # Agent container
+        ├── data.compose.yml         # Optional: escli service that loads data before the Agent
         ├── data/data.ndjson         # Optional: documents loaded before the Agent starts
         ├── elastic-agent.yml        # Elastic Agent configuration
         ├── terraform.tfvars         # Fleet package versions
@@ -113,9 +113,9 @@ make stack-restart version=9.5.5
 
 An integration can load documents into its data stream before its Agent starts, for example to give detection rules the history they need. The documents live in `integrations/<integration_name>/data/data.ndjson` and are loaded by [escli](https://github.com/Anaethelion/escli-rs) (`ghcr.io/anaethelion/escli:0.2.0-alpha`), using the Elasticsearch username and password from `.env`.
 
-The shared `data` service in `integrations/data.compose.yml` runs `escli utils load --pipeline _none /data/data.ndjson` once and exits. The documents are already processed, so the integration's default ingest pipeline is skipped; the Fleet final pipeline still sets `event.ingested` to the load time. The image is published for `linux/amd64` only and runs emulated on arm64 hosts.
+The `data` service in `integrations/<integration_name>/data.compose.yml` runs `escli utils load --pipeline _none /data/data.ndjson` once and exits. The documents are already processed, so the integration's default ingest pipeline is skipped; the Fleet final pipeline still sets `event.ingested` to the load time. The image is published for `linux/amd64` only and runs emulated on arm64 hosts.
 
-To enable it for an integration, add a `<integration_name>_data` service that extends the shared service and mounts the data directory, then make the Agent wait for it:
+To enable it for an integration, copy `integrations/first_epss/data.compose.yml` into the integration folder. In its `compose.yml`, add a `<integration_name>_data` service that extends it and mounts the data directory, then make the Agent wait for it:
 
 ```yaml
 services:
@@ -127,7 +127,7 @@ services:
 
   <integration_name>_data:
     extends:
-      file: ./integrations/data.compose.yml
+      file: ./integrations/<integration_name>/data.compose.yml
       service: data
     volumes:
       - type: bind
