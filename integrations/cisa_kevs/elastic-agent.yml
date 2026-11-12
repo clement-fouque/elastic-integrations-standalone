@@ -36,7 +36,7 @@ inputs:
         data_stream:
           dataset: cisa_kevs.vulnerability
           type: logs
-        config_version: 2
+        config_version: "2"
         interval: 60m
         resource.tracer:
           enabled: false
@@ -57,7 +57,7 @@ inputs:
             dyn({
               "events": bytes(resp.Body).decode_json().vulnerabilities.map(v,
                 {"message": v.encode_json()}
-              )
+          	  )
             })
           :
             dyn({
