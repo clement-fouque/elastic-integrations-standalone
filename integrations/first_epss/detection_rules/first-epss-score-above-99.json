@@ -35,7 +35,7 @@
     {"name": "event.ingested", "type": "date"}
   ],
   "related_integrations": [
-    {"package": "first_epss", "version": "^1.7.0"}
+    {"package": "first_epss", "version": "^1.6.0"}
   ],
   "tags": [
     "Data Source: FIRST EPSS",
@@ -49,8 +49,8 @@
   "false_positives": [
     "A high EPSS score predicts exploitation somewhere, not in your environment. An alert is benign when the affected product is not deployed or is already patched."
   ],
-  "note": "## Triage and analysis\n\n- Open the CVE in vulnerability-lookup and review the affected products and available fixes.\n- Search asset inventories, vulnerability scanners, and SBOMs for the affected product versions.\n- If present, prioritize remediation; check whether the CVE is also in the CISA KEV catalog.\n\nThe Agent re-ingests the full latest EPSS snapshot on every run. The rule picks, per CVE, the earliest-ingested document above 0.99, so re-ingested duplicates and later snapshots never alert again; the alert ID comes from that document. CVEs above 0.99 in the oldest snapshot within the 365-day window are a silent baseline, so the first deployment does not alert. A CVE that stays at or below 0.99 for longer than the retention can alert again.",
-  "setup": "Requires the `first_epss` standalone configuration from this repository, which collects daily FIRST EPSS snapshots into `logs-first_epss.vulnerability-default` using First EPSS integration 1.7.0 and keeps them for 365 days.",
+  "note": "## Triage and analysis\n\n- Open the CVE in vulnerability-lookup and review the affected products and available fixes.\n- Search asset inventories, vulnerability scanners, and SBOMs for the affected product versions.\n- If present, prioritize remediation; check whether the CVE is also in the CISA KEV catalog.\n\nThe Agent ingests each daily EPSS snapshot once. The rule picks, per CVE, the earliest-ingested document above 0.99, so re-ingested duplicates and later snapshots never alert again; the alert ID comes from that document. CVEs above 0.99 in the oldest snapshot within the 365-day window are a silent baseline, so the first deployment does not alert. A CVE that stays at or below 0.99 for longer than the retention can alert again.",
+  "setup": "Requires the `first_epss` standalone configuration from this repository, which collects daily FIRST EPSS snapshots into `logs-first_epss.vulnerability-default` using First EPSS integration 1.6.0 and keeps them for 365 days.",
   "actions": [
     {
       "group": "default",
