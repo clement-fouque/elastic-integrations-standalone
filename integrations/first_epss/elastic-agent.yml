@@ -37,9 +37,6 @@ inputs:
           dataset: first_epss.vulnerability
           type: logs
         config_version: 2
-        # EPSS publishes one snapshot per day. Each hourly run makes a single
-        # 1-record request and only pages through the full catalog when the
-        # snapshot date is newer than cursor.last_date.
         interval: 1h
         resource.tracer:
           enabled: false
@@ -52,56 +49,61 @@ inputs:
         redact:
           fields: ~
         max_executions: 100
-        # The input stops a periodic run on an execution without events, so the
-        # date check and the first page share one execution. Pages pin the
-        # snapshot date and sort by CVE for stable offsets.
+        # Matches the first_epss package cel.yml.hbs. Each run pages through the
+        # full latest snapshot from offset 0.
         program: |-
-          (
-            state.?cursor.offset.hasValue() ?
-              {"date": state.cursor.date, "offset": state.cursor.offset}
-            :
-              request("GET", state.url + "?" + {"limit": ["1"]}.format_query()).do_request().as(check,
-                (check.StatusCode != 200) ?
-                  {"error": {"code": string(check.StatusCode), "id": string(check.Status), "message": "GET latest snapshot date: " + ((size(check.Body) != 0) ? string(check.Body) : string(check.Status))}}
+          state.with(
+                request(
+                        "GET",
+                        state.url + "?" + {
+                                "limit": [string(state.batch_size)],
+                                "offset": [
+                                        (has(state.cursor) && has(state.cursor.nextOffset) && state.cursor.nextOffset != null) ?
+                                                string(state.cursor.nextOffset)
+                                        :
+                                                "0",
+                                ],
+                        }.format_query()
+                ).do_request().as(resp, (resp.StatusCode != 200) ?
+                        {
+                                "events": {
+                                        "error": {
+                                                "code": string(resp.StatusCode),
+                                                "id": string(resp.Status),
+                                                "message": "GET:" +
+                                                (
+                                                        (size(resp.Body) != 0) ?
+                                                                string(resp.Body)
+                                                        :
+                                                                string(resp.Status) + " (" + string(resp.StatusCode) + ")"
+                                                ),
+                                        },
+                                },
+                                "want_more": false,
+                        }
                 :
-                  bytes(check.Body).decode_json().as(body,
-                    (size(body.data) == 0 || body.data[0].date == state.?cursor.last_date.orValue("")) ?
-                      {}
-                    :
-                      {"date": body.data[0].date, "offset": 0}
-                  )
-              )
-          ).as(target,
-            has(target.error) ?
-              state.with({"events": {"error": target.error}, "want_more": false})
-            : !has(target.date) ?
-              state.with({"events": [], "want_more": false})
-            :
-              request("GET", state.url + "?" + {
-                "date": [target.date],
-                "limit": [string(state.batch_size)],
-                "offset": [string(int(target.offset))],
-                "sort": ["cve"],
-              }.format_query()).do_request().as(resp,
-                (resp.StatusCode != 200) ?
-                  state.with({
-                    "events": {"error": {"code": string(resp.StatusCode), "id": string(resp.Status), "message": "GET snapshot " + target.date + " at offset " + string(int(target.offset)) + ": " + ((size(resp.Body) != 0) ? string(resp.Body) : string(resp.Status))}},
-                    "want_more": false,
-                  })
-                :
-                  bytes(resp.Body).decode_json().as(body,
-                    (int(body.offset) + int(body.limit) < int(body.total)).as(more,
-                      state.with({
-                        "events": body.data.map(v, {"message": v.encode_json()}),
-                        "cursor": more ?
-                          {?"last_date": state.?cursor.last_date, "date": target.date, "offset": int(body.offset) + int(body.limit)}
+                        bytes(resp.Body).decode_json().as(body, !has(body.data) ?
+                                {
+                                        "events": [],
+                                        "want_more": false,
+                                }
                         :
-                          {"last_date": target.date},
-                        "want_more": more,
-                      })
-                    )
-                  )
-              )
+                                {
+                                        "events": body.data.map(vulnerability,
+                                                {
+                                                        "message": vulnerability.encode_json(),
+                                                }
+                                        ),
+                                        "cursor": {
+                                                "nextOffset": (body.offset + body.limit < body.total) ?
+                                                        (body.offset + body.limit)
+                                                :
+                                                        null,
+                                        },
+                                        "want_more": body.offset + body.limit < body.total,
+                                }
+                        )
+                )
           )
         tags:
           - forwarded
