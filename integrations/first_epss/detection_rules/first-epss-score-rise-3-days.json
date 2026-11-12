@@ -37,7 +37,7 @@
     {"name": "event.ingested", "type": "date"}
   ],
   "related_integrations": [
-    {"package": "first_epss", "version": "^1.6.0"}
+    {"package": "first_epss", "version": "^1.7.0"}
   ],
   "tags": [
     "Data Source: FIRST EPSS",
@@ -52,7 +52,7 @@
     "A rising EPSS score predicts exploitation somewhere, not in your environment. An alert is benign when the affected product is not deployed or is already patched."
   ],
   "note": "## Triage and analysis\n\n- Open the CVE in vulnerability-lookup and review the affected products and available fixes.\n- Search asset inventories, vulnerability scanners, and SBOMs for the affected product versions.\n- If present, prioritize remediation; check whether the CVE is also in the CISA KEV catalog.\n\nThe rise is the latest score minus the score of the earliest snapshot since midnight UTC 3 days ago, so it spans up to 3 daily changes. Falling scores never alert. Alerts are suppressed per CVE for 72 hours, the life of a rise within the window.",
-  "setup": "Requires the `first_epss` standalone configuration from this repository, which collects daily FIRST EPSS snapshots into `logs-first_epss.vulnerability-default` using First EPSS integration 1.6.0. The rule needs snapshots from the last 3 days.",
+  "setup": "Requires the `first_epss` standalone configuration from this repository, which collects daily FIRST EPSS snapshots into `logs-first_epss.vulnerability-default` using First EPSS integration 1.7.0. The rule needs snapshots from the last 3 days.",
   "actions": [
     {
       "group": "default",
