@@ -37,20 +37,19 @@ inputs:
           dataset: first_epss.vulnerability
           type: logs
         config_version: 2
-        interval: 1h
+        interval: 24h
         resource.tracer:
           enabled: false
           filename: "../../logs/cel/http-request-trace-*.ndjson"
           maxbackups: 5
-        resource.url: https://api.first.org/data/v1/epss
+          maxsize: 5
         resource.timeout: 10m
+        resource.url: https://api.first.org/data/v1/epss
         state:
-          batch_size: 10000
-        redact:
-          fields: ~
-        max_executions: 100
-        # Matches the first_epss package cel.yml.hbs. Each run pages through the
-        # full latest snapshot from offset 0.
+          batch_size: 100
+        max_executions: 5000
+        # Matches the first_epss package cel.yml.hbs and its defaults. Each run
+        # pages through the full latest snapshot from offset 0.
         program: |-
           state.with(
                 request(
@@ -70,7 +69,7 @@ inputs:
                                         "error": {
                                                 "code": string(resp.StatusCode),
                                                 "id": string(resp.Status),
-                                                "message": "GET:" +
+                                                "message": "GET:" + 
                                                 (
                                                         (size(resp.Body) != 0) ?
                                                                 string(resp.Body)
