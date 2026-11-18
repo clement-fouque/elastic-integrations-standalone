@@ -22,7 +22,7 @@ services:
       ELASTIC_USERNAME: ${ELASTICSEARCH_USERNAME:?Set ELASTICSEARCH_USERNAME}
       ELASTIC_PASSWORD: ${ELASTICSEARCH_PASSWORD:?Set ELASTICSEARCH_PASSWORD}
       # Keep this version aligned with terraform.tfvars.
-      ELASTIC_INTEGRATION_FIRST_EPSS_VERSION: "1.6.0"
+      ELASTIC_INTEGRATION_FIRST_EPSS_VERSION: "1.7.0"
     network_mode: host
     depends_on:
       first_epss_data:

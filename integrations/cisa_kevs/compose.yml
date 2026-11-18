@@ -10,7 +10,7 @@ services:
       ELASTIC_USERNAME: ${ELASTICSEARCH_USERNAME:?Set ELASTICSEARCH_USERNAME}
       ELASTIC_PASSWORD: ${ELASTICSEARCH_PASSWORD:?Set ELASTICSEARCH_PASSWORD}
       # Keep this version aligned with terraform.tfvars.
-      ELASTIC_INTEGRATION_CISA_KEVS_VERSION: "1.13.0"
+      ELASTIC_INTEGRATION_CISA_KEVS_VERSION: "1.14.0"
     network_mode: host
     volumes:
       - type: bind
