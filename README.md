@@ -199,6 +199,9 @@ Currently available integrations:
 - [**github_security_advisories**](integrations/github_security_advisories): GitHub global security advisories
 - [**cisa_kevs**](integrations/cisa_kevs): CISA Known Exploited Vulnerabilities catalog
 - [**first_epss**](integrations/first_epss): FIRST EPSS daily exploit prediction scores
+- [**projectdiscovery**](integrations/projectdiscovery): ProjectDiscovery Cloud Platform vulnerability findings
+
+To deploy `projectdiscovery`, set `TF_VAR_projectdiscovery_slack_webhook_url` in your Git-ignored `.env`. OpenTofu creates the **ProjectDiscovery Slack** Kibana connector for future notifications; no workflows or detection rules are installed.
 
 ## Configuration
 

@@ -1,0 +1,217 @@
+outputs:
+  default:
+    type: elasticsearch
+    hosts:
+      - ${ELASTIC_HOST}
+    username: ${ELASTIC_USERNAME}
+    password: ${ELASTIC_PASSWORD}
+    ssl.verification_mode: none
+    preset: throughput
+
+agent:
+  download:
+    sourceURI: "https://artifacts.elastic.co/downloads/"
+  monitoring:
+    enabled: false
+    use_output: default
+    namespace: default
+    logs: false
+    metrics: false
+  features: {}
+
+inputs:
+  - id: cel-projectdiscovery
+    name: projectdiscovery
+    revision: 1
+    type: cel
+    use_output: default
+    meta:
+      package:
+        name: projectdiscovery
+        version: ${env.ELASTIC_INTEGRATION_PROJECTDISCOVERY_VERSION}
+    data_stream:
+      namespace: default
+    streams:
+      - id: cel-projectdiscovery.vulnerability
+        data_stream:
+          dataset: projectdiscovery.vulnerability
+          type: logs
+        config_version: 2
+        interval: 15m
+        resource.tracer:
+          enabled: false
+          filename: "../../logs/cel/http-request-trace-*.ndjson"
+          maxbackups: 5
+          maxsize: 5
+        resource.timeout: 60s
+        resource.url: https://api.projectdiscovery.io
+        resource.headers:
+          Accept:
+            - application/json
+        resource.rate_limit:
+          limit: 1
+          burst: 1
+        max_executions: 30000
+        state:
+          api_key: ${env.PROJECTDISCOVERY_API_KEY}
+          team_id: ${env.PROJECTDISCOVERY_TEAM_ID}
+          batch_size: 100
+          initial_interval: 720h
+          severity:
+            - info
+            - low
+            - medium
+            - high
+            - critical
+            - unknown
+        redact:
+          fields:
+            - api_key
+            - team_id
+        program: |-
+          state.?cursor.pass.orValue(
+            state.?cursor.last_updated_at.orValue(
+              (now - duration(state.initial_interval)).format(time_layout.RFC3339Nano)
+            ).as(pass_boundary,
+              {
+                "boundary": pass_boundary,
+                "offset": 0,
+                "newest_updated_at": pass_boundary,
+              }
+            )
+          ).as(pass,
+            // The API silently caps limit at 100, so a larger page size would end the pass early.
+            // A page size below 1 would never advance the offset, so it is raised to 1.
+            min(max(int(state.batch_size), 1), 100).as(page_size,
+              state.with(
+                request(
+                  "GET",
+                  state.url.trim_right("/") + "/v1/scans/results?" + {
+                    "limit": [string(page_size)],
+                    "offset": [string(int(pass.offset))],
+                    "sort_desc": ["updated_at"],
+                    "asset_metadata": ["true"],
+                    ?"severity": state.?severity.optMap(s, [s.join(",")]),
+                    "vuln_status": ["open,fixed,false_positive,duplicate,fix_in_progress,accepted_risk,triaged"],
+                  }.format_query()
+                ).with(
+                  {
+                    "Header": {
+                      "X-API-Key": [state.api_key],
+                      ?"X-Team-Id": (state.?team_id.orValue("") != "") ?
+                        optional.of([state.team_id])
+                      :
+                        optional.none(),
+                    },
+                  }
+                ).do_request().as(response,
+                  (response.StatusCode == 200) ?
+                    response.Body.decode_json().as(response_body,
+                      is_error(response_body) ?
+                        {
+                          "error": {
+                            "code": string(response.StatusCode),
+                            "id": response.Status,
+                            "message": "GET " + state.url.trim_right("/") + "/v1/scans/results: " + try(response_body),
+                          },
+                        }
+                      :
+                        // Only a data list (possibly empty) is a valid envelope; anything else is an error so the
+                        // in-progress pass is kept and retried instead of being committed as finished.
+                        (type(response_body) == map && type(response_body.?data.orValue(null)) == list) ?
+                          {
+                            "findings": response_body.data,
+                          }
+                        :
+                          {
+                            "error": {
+                              "code": string(response.StatusCode),
+                              "id": response.Status,
+                              "message": "GET " + state.url.trim_right("/") + "/v1/scans/results: unexpected response shape: data is not a list",
+                            },
+                          }
+                    )
+                  :
+                    {
+                      "error": {
+                        "code": string(response.StatusCode),
+                        "id": response.Status,
+                        "message": "GET " + state.url.trim_right("/") + "/v1/scans/results: " + (
+                          (size(response.Body) != 0) ?
+                            string(response.Body)
+                          :
+                            response.Status + " (" + string(response.StatusCode) + ")"
+                        ),
+                      },
+                    }
+                ).as(page_result,
+                  has(page_result.error) ?
+                    {
+                      "events": {
+                        "error": page_result.error,
+                      },
+                      "want_more": false,
+                    }
+                  :
+                    page_result.findings.map(finding,
+                      {
+                        "finding": finding,
+                        // Records without a valid updated_at are kept and do not move the cursor.
+                        "updated_at": finding.?updated_at.orValue("").parse_time(["2006-01-02T15:04:05.999999999Z07:00", "2006-01-02T15:04:05.999999999"]).as(parsed_updated_at,
+                          is_error(parsed_updated_at) ?
+                            timestamp(pass.boundary)
+                          :
+                            parsed_updated_at
+                        ),
+                      }
+                    ).as(page_findings,
+                      page_findings.filter(dated_finding, dated_finding.updated_at >= timestamp(pass.boundary)).as(kept_findings,
+                        {
+                          "kept_findings": kept_findings,
+                          "pass_newest_updated_at": ([timestamp(pass.newest_updated_at)] + kept_findings.map(dated_finding, dated_finding.updated_at)).max().format(time_layout.RFC3339Nano),
+                          "more_pages": size(page_findings) >= page_size && size(kept_findings) == size(page_findings),
+                          "next_offset": int(pass.offset) + size(page_findings),
+                        }
+                      )
+                    ).as(page,
+                      {
+                        "events": (size(page.kept_findings) > 0) ?
+                          page.kept_findings.map(dated_finding,
+                            {
+                              "message": dated_finding.finding.encode_json(),
+                            }
+                          )
+                        :
+                          // Placeholder so the cursor is persisted when nothing new was found.
+                          dyn([{"retry": true}]),
+                        "cursor": page.more_pages ?
+                          {
+                            ?"last_updated_at": state.?cursor.last_updated_at,
+                            "pass": {
+                              "boundary": pass.boundary,
+                              "offset": page.next_offset,
+                              "newest_updated_at": page.pass_newest_updated_at,
+                            },
+                          }
+                        :
+                          {
+                            "last_updated_at": page.pass_newest_updated_at,
+                          },
+                        "want_more": page.more_pages,
+                      }
+                    )
+                )
+              )
+            )
+          )
+        tags:
+          - forwarded
+          - projectdiscovery-vulnerability
+        publisher_pipeline.disable_host: true
+        processors:
+          - drop_event:
+              when:
+                equals:
+                  retry: true
+
+agent.logging.to_stderr: true
