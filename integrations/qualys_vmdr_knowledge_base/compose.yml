@@ -1,0 +1,25 @@
+name: elastic-qualys-vmdr-knowledge-base
+
+services:
+  qualys_vmdr_knowledge_base:
+    image: docker.elastic.co/elastic-agent/elastic-agent-wolfi:${ELASTIC_VERSION:?Set ELASTIC_VERSION to the stack version}
+    restart: unless-stopped
+    environment:
+      FLEET_ENROLL: "0"
+      ELASTIC_HOST: ${ELASTIC_HOST:?Set the container-side Elasticsearch URL}
+      ELASTIC_USERNAME: ${ELASTICSEARCH_USERNAME:?Set ELASTICSEARCH_USERNAME}
+      ELASTIC_PASSWORD: ${ELASTICSEARCH_PASSWORD:?Set ELASTICSEARCH_PASSWORD}
+      # Keep this version aligned with terraform.tfvars.
+      ELASTIC_INTEGRATION_QUALYS_VMDR_VERSION: "6.23.0"
+      QUALYS_URL: ${QUALYS_URL:?Set QUALYS_URL}
+      QUALYS_USERNAME: ${QUALYS_USERNAME:?Set QUALYS_USERNAME}
+      QUALYS_PASSWORD: ${QUALYS_PASSWORD:?Set QUALYS_PASSWORD}
+      QUALYS_INPUT_PARAMETERS: ${QUALYS_INPUT_PARAMETERS:-details=All}
+    network_mode: host
+    volumes:
+      - type: bind
+        source: ./integrations/qualys_vmdr_knowledge_base/elastic-agent.yml
+        target: /usr/share/elastic-agent/elastic-agent.yml
+        read_only: true
+        bind:
+          create_host_path: false
