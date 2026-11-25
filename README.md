@@ -200,8 +200,11 @@ Currently available integrations:
 - [**cisa_kevs**](integrations/cisa_kevs): CISA Known Exploited Vulnerabilities catalog
 - [**first_epss**](integrations/first_epss): FIRST EPSS daily exploit prediction scores
 - [**projectdiscovery**](integrations/projectdiscovery): ProjectDiscovery Cloud Platform vulnerability findings
+- [**qualys_was**](integrations/qualys_was): Qualys Web Application Scanning vulnerability findings
 
 To deploy `projectdiscovery`, set `TF_VAR_projectdiscovery_slack_webhook_url` in your Git-ignored `.env`. OpenTofu creates the **ProjectDiscovery Slack** Kibana connector for future notifications; no workflows or detection rules are installed.
+
+To deploy `qualys_was`, set `QUALYS_WAS_API_URL` to the complete Qualys API base URL, along with `QUALYS_WAS_USERNAME` and `QUALYS_WAS_PASSWORD`, in your Git-ignored `.env`. The standalone policy retains the package defaults: 24-hour initial lookback and polling, with information-gathered, sensitive-content, and verbose results enabled.
 
 ## Configuration
 
