@@ -87,7 +87,7 @@ You do not need to install the integration in Kibana manually. OpenTofu installs
 
 ### 3. Integration-Specific Configuration
 
-Integration settings live in the root `.env`, prefixed with the integration name (for example `GITHUB_ISSUES_`). `.env.example` lists and describes every setting. They are passed only to the Agent container, except `TF_VAR_*` variables, which are passed only to OpenTofu.
+Integration settings live in the root `.env`, typically prefixed with the integration name (for example `GITHUB_ISSUES_`). `.env.example` lists and describes every setting. They are passed only to the Agent container, except `TF_VAR_*` variables, which are passed only to OpenTofu.
 
 ## Usage
 
@@ -201,10 +201,17 @@ Currently available integrations:
 - [**first_epss**](integrations/first_epss): FIRST EPSS daily exploit prediction scores
 - [**projectdiscovery**](integrations/projectdiscovery): ProjectDiscovery Cloud Platform vulnerability findings
 - [**qualys_was**](integrations/qualys_was): Qualys Web Application Scanning vulnerability findings
+- [**qualys_vmdr_knowledge_base**](integrations/qualys_vmdr_knowledge_base): Qualys VMDR Knowledge Base
 
 To deploy `projectdiscovery`, set `TF_VAR_projectdiscovery_slack_webhook_url` in your Git-ignored `.env`. OpenTofu creates the **ProjectDiscovery Slack** Kibana connector for future notifications; no workflows or detection rules are installed.
 
 To deploy `qualys_was`, set `QUALYS_WAS_API_URL` to the complete Qualys API base URL, along with `QUALYS_WAS_USERNAME` and `QUALYS_WAS_PASSWORD`, in your Git-ignored `.env`. The standalone policy retains the package defaults: 24-hour initial lookback and polling, with information-gathered, sensitive-content, and verbose results enabled.
+
+To deploy `qualys_vmdr_knowledge_base`, set `QUALYS_URL` to your Qualys API server base URL and provide `QUALYS_USERNAME` and `QUALYS_PASSWORD` in `.env`. `QUALYS_INPUT_PARAMETERS` defaults to `details=All` and can be overridden with URL query parameters, for example `QUALYS_INPUT_PARAMETERS='details=All&ids=123'`. Only the Knowledge Base stream is enabled.
+
+The initial request covers 120 hours and can return a large response in a single request; the integration does not paginate it. Increasing the initial interval to 87,600 hours (10 years) requires substantially more memory and execution time; an out-of-memory kill can prevent any events from being indexed. Ensure the Docker host has sufficient available memory for both the Agent and the stack. Once a response establishes a modification cursor, later requests are incremental. A failed initial request, or an empty result that does not establish a cursor, leaves the initial lookback in effect for the next run. `make agent-restart` recreates the container and discards its cursor, so the initial lookback runs again; an Agent process restart within the same container may retain its state.
+
+The 30-minute schedule makes 48 scheduled calls per day, excluding retries. [Older published Qualys API limits](https://www.qualys.com/docs/qualys-api-limits.pdf) list 50 calls per day for Express/Consultant and 300 per hour for Standard; current limits may vary, so check your account's limits.
 
 ## Configuration
 
